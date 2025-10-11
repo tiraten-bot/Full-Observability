@@ -8,7 +8,7 @@ import (
 
 // GetUserQuery represents the query to get a user by ID
 type GetUserQuery struct {
-	ID int
+	ID uint
 }
 
 // GetUserHandler handles get user query
@@ -23,7 +23,7 @@ func NewGetUserHandler(repo domain.UserRepository) *GetUserHandler {
 
 // Handle executes the get user query
 func (h *GetUserHandler) Handle(query GetUserQuery) (*domain.User, error) {
-	if query.ID <= 0 {
+	if query.ID == 0 {
 		return nil, fmt.Errorf("invalid user id")
 	}
 

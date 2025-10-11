@@ -24,17 +24,23 @@ func main() {
 		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}
 
-	// Connect to database
-	db, err := database.NewPostgresConnection(dbConfig)
+	// Connect to database with GORM
+	db, err := database.NewGormConnection(dbConfig)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer db.Close()
+
+	// Get underlying *sql.DB for connection management
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("Failed to get database instance: %v", err)
+	}
+	defer sqlDB.Close()
 
 	// Initialize repository
-	repo := repository.NewPostgresUserRepository(db)
-	if err := repo.InitSchema(); err != nil {
-		log.Fatalf("Failed to initialize schema: %v", err)
+	repo := repository.NewGormUserRepository(db)
+	if err := repo.AutoMigrate(); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	// Initialize HTTP handler
@@ -57,8 +63,11 @@ func main() {
 
 	// Start server
 	port := getEnv("PORT", "8080")
-	log.Printf("User service starting on port %s", port)
-	log.Printf("Prometheus metrics available at http://localhost:%s/metrics", port)
+	log.Printf("🚀 User service starting on port %s", port)
+	log.Printf("📊 Prometheus metrics: http://localhost:%s/metrics", port)
+	log.Printf("🔐 Auth endpoints: /auth/register, /auth/login", port)
+	log.Printf("👤 User endpoints: /users/me")
+	log.Printf("👑 Admin endpoints: /admin/*")
 
 	if err := http.ListenAndServe(":"+port, c.Handler(router)); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

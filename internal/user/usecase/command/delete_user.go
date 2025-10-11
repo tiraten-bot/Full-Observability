@@ -8,7 +8,7 @@ import (
 
 // DeleteUserCommand represents the command to delete a user
 type DeleteUserCommand struct {
-	ID int
+	ID uint
 }
 
 // DeleteUserHandler handles user deletion command
@@ -24,7 +24,7 @@ func NewDeleteUserHandler(repo domain.UserRepository) *DeleteUserHandler {
 // Handle executes the delete user command
 func (h *DeleteUserHandler) Handle(cmd DeleteUserCommand) error {
 	// Validation
-	if cmd.ID <= 0 {
+	if cmd.ID == 0 {
 		return fmt.Errorf("invalid user id")
 	}
 

@@ -15,11 +15,19 @@ import (
 
 // UserHandler handles HTTP requests for users
 type UserHandler struct {
-	createHandler  *command.CreateUserHandler
-	updateHandler  *command.UpdateUserHandler
-	deleteHandler  *command.DeleteUserHandler
+	// Command handlers
+	registerHandler     *command.RegisterUserHandler
+	loginHandler        *command.LoginUserHandler
+	updateHandler       *command.UpdateUserHandler
+	deleteHandler       *command.DeleteUserHandler
+	changeRoleHandler   *command.ChangeRoleHandler
+	toggleActiveHandler *command.ToggleActiveHandler
+
+	// Query handlers
 	getUserHandler *query.GetUserHandler
 	listHandler    *query.ListUsersHandler
+	statsHandler   *query.GetStatsHandler
+
 	repo           domain.UserRepository
 	requestCounter *prometheus.CounterVec
 	requestLatency *prometheus.HistogramVec
@@ -29,13 +37,17 @@ type UserHandler struct {
 // NewUserHandler creates a new user handler
 func NewUserHandler(repo domain.UserRepository) *UserHandler {
 	// Initialize command handlers
-	createHandler := command.NewCreateUserHandler(repo)
+	registerHandler := command.NewRegisterUserHandler(repo)
+	loginHandler := command.NewLoginUserHandler(repo)
 	updateHandler := command.NewUpdateUserHandler(repo)
 	deleteHandler := command.NewDeleteUserHandler(repo)
+	changeRoleHandler := command.NewChangeRoleHandler(repo)
+	toggleActiveHandler := command.NewToggleActiveHandler(repo)
 
 	// Initialize query handlers
 	getUserHandler := query.NewGetUserHandler(repo)
 	listHandler := query.NewListUsersHandler(repo)
+	statsHandler := query.NewGetStatsHandler(repo)
 
 	// Initialize Prometheus metrics
 	requestCounter := prometheus.NewCounterVec(
@@ -67,16 +79,31 @@ func NewUserHandler(repo domain.UserRepository) *UserHandler {
 	prometheus.MustRegister(activeUsers)
 
 	return &UserHandler{
-		createHandler:  createHandler,
-		updateHandler:  updateHandler,
-		deleteHandler:  deleteHandler,
-		getUserHandler: getUserHandler,
-		listHandler:    listHandler,
-		repo:           repo,
-		requestCounter: requestCounter,
-		requestLatency: requestLatency,
-		activeUsers:    activeUsers,
+		registerHandler:     registerHandler,
+		loginHandler:        loginHandler,
+		updateHandler:       updateHandler,
+		deleteHandler:       deleteHandler,
+		changeRoleHandler:   changeRoleHandler,
+		toggleActiveHandler: toggleActiveHandler,
+		getUserHandler:      getUserHandler,
+		listHandler:         listHandler,
+		statsHandler:        statsHandler,
+		repo:                repo,
+		requestCounter:      requestCounter,
+		requestLatency:      requestLatency,
+		activeUsers:         activeUsers,
 	}
+}
+
+// responseWriter wraps http.ResponseWriter to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }
 
 // metricsMiddleware wraps handlers with Prometheus metrics
@@ -93,22 +120,12 @@ func (h *UserHandler) metricsMiddleware(endpoint string, next http.HandlerFunc) 
 	}
 }
 
-// responseWriter wraps http.ResponseWriter to capture status code
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
-// CreateUser handles POST /users
-func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
+// Register handles POST /auth/register
+func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Email    string `json:"email"`
+		Password string `json:"password"`
 		FullName string `json:"full_name"`
 	}
 
@@ -117,13 +134,15 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := command.CreateUserCommand{
+	cmd := command.RegisterUserCommand{
 		Username: req.Username,
 		Email:    req.Email,
+		Password: req.Password,
 		FullName: req.FullName,
+		Role:     domain.RoleUser, // Default role
 	}
 
-	user, err := h.createHandler.Handle(cmd)
+	user, err := h.registerHandler.Handle(cmd)
 	if err != nil {
 		h.respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -133,16 +152,41 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	h.respondJSON(w, http.StatusCreated, user)
 }
 
-// GetUser handles GET /users/{id}
-func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid user ID")
+// Login handles POST /auth/login
+func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	q := query.GetUserQuery{ID: id}
+	cmd := command.LoginUserCommand{
+		Username: req.Username,
+		Password: req.Password,
+	}
+
+	response, err := h.loginHandler.Handle(cmd)
+	if err != nil {
+		h.respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, response)
+}
+
+// GetProfile handles GET /users/me (authenticated user)
+func (h *UserHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(uint)
+	if !ok {
+		h.respondError(w, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	q := query.GetUserQuery{ID: userID}
 	user, err := h.getUserHandler.Handle(q)
 	if err != nil {
 		h.respondError(w, http.StatusNotFound, err.Error())
@@ -152,31 +196,18 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	h.respondJSON(w, http.StatusOK, user)
 }
 
-// ListUsers handles GET /users
-func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	q := query.ListUsersQuery{}
-	users, err := h.listHandler.Handle(q)
-	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	h.updateActiveUsersMetric()
-	h.respondJSON(w, http.StatusOK, users)
-}
-
-// UpdateUser handles PUT /users/{id}
-func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid user ID")
+// UpdateProfile handles PUT /users/me (authenticated user)
+func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(uint)
+	if !ok {
+		h.respondError(w, http.StatusUnauthorized, "User ID not found in context")
 		return
 	}
 
 	var req struct {
 		Email    string `json:"email"`
 		FullName string `json:"full_name"`
+		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -185,9 +216,10 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cmd := command.UpdateUserCommand{
-		ID:       id,
+		ID:       userID,
 		Email:    req.Email,
 		FullName: req.FullName,
+		Password: req.Password,
 	}
 
 	user, err := h.updateHandler.Handle(cmd)
@@ -199,16 +231,132 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	h.respondJSON(w, http.StatusOK, user)
 }
 
-// DeleteUser handles DELETE /users/{id}
-func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+// --- ADMIN ENDPOINTS ---
+
+// CreateAdmin handles POST /admin/users (admin only)
+func (h *UserHandler) CreateAdmin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		FullName string `json:"full_name"`
+		Role     string `json:"role"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	cmd := command.RegisterUserCommand{
+		Username: req.Username,
+		Email:    req.Email,
+		Password: req.Password,
+		FullName: req.FullName,
+		Role:     req.Role, // Admin can set role
+	}
+
+	user, err := h.registerHandler.Handle(cmd)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	h.updateActiveUsersMetric()
+	h.respondJSON(w, http.StatusCreated, user)
+}
+
+// GetUser handles GET /admin/users/{id} (admin only)
+func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
 		h.respondError(w, http.StatusBadRequest, "Invalid user ID")
 		return
 	}
 
-	cmd := command.DeleteUserCommand{ID: id}
+	q := query.GetUserQuery{ID: uint(id)}
+	user, err := h.getUserHandler.Handle(q)
+	if err != nil {
+		h.respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, user)
+}
+
+// ListUsers handles GET /admin/users (admin only)
+func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+	role := r.URL.Query().Get("role")
+
+	limit, _ := strconv.Atoi(limitStr)
+	offset, _ := strconv.Atoi(offsetStr)
+
+	q := query.ListUsersQuery{
+		Limit:  limit,
+		Offset: offset,
+		Role:   role,
+	}
+
+	users, err := h.listHandler.Handle(q)
+	if err != nil {
+		h.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.updateActiveUsersMetric()
+	h.respondJSON(w, http.StatusOK, users)
+}
+
+// UpdateUser handles PUT /admin/users/{id} (admin only)
+func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	var req struct {
+		Email    string `json:"email"`
+		FullName string `json:"full_name"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	cmd := command.UpdateUserCommand{
+		ID:       uint(id),
+		Email:    req.Email,
+		FullName: req.FullName,
+		Password: req.Password,
+	}
+
+	user, err := h.updateHandler.Handle(cmd)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, user)
+}
+
+// DeleteUser handles DELETE /admin/users/{id} (admin only)
+func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	cmd := command.DeleteUserCommand{ID: uint(id)}
 	if err := h.deleteHandler.Handle(cmd); err != nil {
 		h.respondError(w, http.StatusNotFound, err.Error())
 		return
@@ -216,6 +364,82 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	h.updateActiveUsersMetric()
 	h.respondJSON(w, http.StatusOK, map[string]string{"message": "User deleted successfully"})
+}
+
+// ChangeRole handles PUT /admin/users/{id}/role (admin only)
+func (h *UserHandler) ChangeRole(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	var req struct {
+		Role string `json:"role"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	cmd := command.ChangeRoleCommand{
+		UserID: uint(id),
+		Role:   req.Role,
+	}
+
+	user, err := h.changeRoleHandler.Handle(cmd)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, user)
+}
+
+// ToggleActive handles PUT /admin/users/{id}/active (admin only)
+func (h *UserHandler) ToggleActive(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	var req struct {
+		IsActive bool `json:"is_active"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	cmd := command.ToggleActiveCommand{
+		UserID:   uint(id),
+		IsActive: req.IsActive,
+	}
+
+	user, err := h.toggleActiveHandler.Handle(cmd)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, user)
+}
+
+// GetStats handles GET /admin/stats (admin only)
+func (h *UserHandler) GetStats(w http.ResponseWriter, r *http.Request) {
+	q := query.GetStatsQuery{}
+	stats, err := h.statsHandler.Handle(q)
+	if err != nil {
+		h.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, stats)
 }
 
 // HealthCheck handles GET /health
@@ -245,11 +469,22 @@ func (h *UserHandler) respondError(w http.ResponseWriter, status int, message st
 
 // RegisterRoutes registers all user routes
 func (h *UserHandler) RegisterRoutes(router *mux.Router) {
-	router.HandleFunc("/users", h.metricsMiddleware("/users", h.CreateUser)).Methods("POST")
-	router.HandleFunc("/users", h.metricsMiddleware("/users", h.ListUsers)).Methods("GET")
-	router.HandleFunc("/users/{id}", h.metricsMiddleware("/users/{id}", h.GetUser)).Methods("GET")
-	router.HandleFunc("/users/{id}", h.metricsMiddleware("/users/{id}", h.UpdateUser)).Methods("PUT")
-	router.HandleFunc("/users/{id}", h.metricsMiddleware("/users/{id}", h.DeleteUser)).Methods("DELETE")
+	// Public routes
+	router.HandleFunc("/auth/register", h.metricsMiddleware("/auth/register", h.Register)).Methods("POST")
+	router.HandleFunc("/auth/login", h.metricsMiddleware("/auth/login", h.Login)).Methods("POST")
 	router.HandleFunc("/health", h.metricsMiddleware("/health", h.HealthCheck)).Methods("GET")
-}
 
+	// Authenticated user routes
+	router.HandleFunc("/users/me", h.metricsMiddleware("/users/me", AuthMiddleware(h.GetProfile))).Methods("GET")
+	router.HandleFunc("/users/me", h.metricsMiddleware("/users/me", AuthMiddleware(h.UpdateProfile))).Methods("PUT")
+
+	// Admin routes
+	router.HandleFunc("/admin/users", h.metricsMiddleware("/admin/users", AdminMiddleware(h.CreateAdmin))).Methods("POST")
+	router.HandleFunc("/admin/users", h.metricsMiddleware("/admin/users", AdminMiddleware(h.ListUsers))).Methods("GET")
+	router.HandleFunc("/admin/users/{id}", h.metricsMiddleware("/admin/users/{id}", AdminMiddleware(h.GetUser))).Methods("GET")
+	router.HandleFunc("/admin/users/{id}", h.metricsMiddleware("/admin/users/{id}", AdminMiddleware(h.UpdateUser))).Methods("PUT")
+	router.HandleFunc("/admin/users/{id}", h.metricsMiddleware("/admin/users/{id}", AdminMiddleware(h.DeleteUser))).Methods("DELETE")
+	router.HandleFunc("/admin/users/{id}/role", h.metricsMiddleware("/admin/users/{id}/role", AdminMiddleware(h.ChangeRole))).Methods("PUT")
+	router.HandleFunc("/admin/users/{id}/active", h.metricsMiddleware("/admin/users/{id}/active", AdminMiddleware(h.ToggleActive))).Methods("PUT")
+	router.HandleFunc("/admin/stats", h.metricsMiddleware("/admin/stats", AdminMiddleware(h.GetStats))).Methods("GET")
+}
