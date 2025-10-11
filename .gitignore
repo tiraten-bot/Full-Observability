@@ -41,3 +41,5 @@ grafana_data/
 # Logs
 *.log
 
+# Generated proto files (optional - can be committed)
+# api/proto/**/*.pb.go

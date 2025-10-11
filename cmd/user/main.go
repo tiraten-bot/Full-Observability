@@ -2,12 +2,20 @@ package main
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
+	pb "github.com/tair/full-observability/api/proto/user"
+	grpcDelivery "github.com/tair/full-observability/internal/user/delivery/grpc"
 	httpDelivery "github.com/tair/full-observability/internal/user/delivery/http"
 	"github.com/tair/full-observability/internal/user/repository"
 	"github.com/tair/full-observability/pkg/database"
@@ -43,6 +51,23 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// Start HTTP server in a goroutine
+	httpPort := getEnv("HTTP_PORT", "8080")
+	go startHTTPServer(repo, httpPort)
+
+	// Start gRPC server in a goroutine
+	grpcPort := getEnv("GRPC_PORT", "9090")
+	go startGRPCServer(repo, grpcPort)
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down servers...")
+}
+
+func startHTTPServer(repo *repository.GormUserRepository, port string) {
 	// Initialize HTTP handler
 	handler := httpDelivery.NewUserHandler(repo)
 
@@ -61,16 +86,44 @@ func main() {
 		AllowCredentials: true,
 	})
 
-	// Start server
-	port := getEnv("PORT", "8080")
-	log.Printf("🚀 User service starting on port %s", port)
+	log.Printf("🌐 HTTP server starting on port %s", port)
 	log.Printf("📊 Prometheus metrics: http://localhost:%s/metrics", port)
-	log.Printf("🔐 Auth endpoints: /auth/register, /auth/login", port)
+	log.Printf("🔐 Auth endpoints: /auth/register, /auth/login")
 	log.Printf("👤 User endpoints: /users/me")
 	log.Printf("👑 Admin endpoints: /admin/*")
 
 	if err := http.ListenAndServe(":"+port, c.Handler(router)); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		log.Fatalf("Failed to start HTTP server: %v", err)
+	}
+}
+
+func startGRPCServer(repo *repository.GormUserRepository, port string) {
+	// Create gRPC server with interceptors
+	grpcServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			grpcDelivery.LoggingInterceptor,
+			grpcDelivery.AuthInterceptor,
+		),
+	)
+
+	// Register user service
+	userServer := grpcDelivery.NewUserServer(repo)
+	pb.RegisterUserServiceServer(grpcServer, userServer)
+
+	// Register reflection service (for grpcurl and grpc tools)
+	reflection.Register(grpcServer)
+
+	// Listen on TCP port
+	lis, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		log.Fatalf("Failed to listen on port %s: %v", port, err)
+	}
+
+	log.Printf("🚀 gRPC server starting on port %s", port)
+	log.Printf("📡 gRPC reflection enabled")
+
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("Failed to start gRPC server: %v", err)
 	}
 }
 
