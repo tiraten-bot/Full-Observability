@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -21,21 +20,36 @@ import (
 	httpDelivery "github.com/tair/full-observability/internal/user/delivery/http"
 	"github.com/tair/full-observability/internal/user/repository"
 	"github.com/tair/full-observability/pkg/database"
+	"github.com/tair/full-observability/pkg/logger"
 	"github.com/tair/full-observability/pkg/tracing"
 )
 
 func main() {
-	// Initialize tracer
+	// Initialize logger
 	serviceName := getEnv("OTEL_SERVICE_NAME", "user-service")
+	isDevelopment := getEnv("ENVIRONMENT", "development") == "development"
+	logger.Init(serviceName, isDevelopment)
+	
+	// Set log level from environment
+	logLevel := getEnv("LOG_LEVEL", "info")
+	logger.SetLevel(logLevel)
+
+	logger.Logger.Info().
+		Str("service", serviceName).
+		Str("environment", getEnv("ENVIRONMENT", "development")).
+		Str("log_level", logLevel).
+		Msg("Starting user service")
+
+	// Initialize tracer
 	tp, err := tracing.InitTracer(serviceName)
 	if err != nil {
-		log.Printf("Failed to initialize tracer: %v", err)
+		logger.Logger.Error().Err(err).Msg("Failed to initialize tracer")
 	} else {
 		defer func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := tracing.Shutdown(ctx, tp); err != nil {
-				log.Printf("Failed to shutdown tracer: %v", err)
+				logger.Logger.Error().Err(err).Msg("Failed to shutdown tracer")
 			}
 		}()
 	}
@@ -53,21 +67,23 @@ func main() {
 	// Connect to database with GORM
 	db, err := database.NewGormConnection(dbConfig)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Logger.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 
 	// Get underlying *sql.DB for connection management
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatalf("Failed to get database instance: %v", err)
+		logger.Logger.Fatal().Err(err).Msg("Failed to get database instance")
 	}
 	defer sqlDB.Close()
 
 	// Initialize repository
 	repo := repository.NewGormUserRepository(db)
 	if err := repo.AutoMigrate(); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logger.Logger.Fatal().Err(err).Msg("Failed to run migrations")
 	}
+
+	logger.Logger.Info().Msg("Database initialized successfully")
 
 	// Start HTTP server in a goroutine
 	httpPort := getEnv("HTTP_PORT", "8080")
@@ -82,7 +98,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("🛑 Shutting down servers...")
+	logger.Logger.Info().Msg("Shutting down servers...")
 }
 
 func startHTTPServer(repo *repository.GormUserRepository, port string) {
@@ -92,7 +108,8 @@ func startHTTPServer(repo *repository.GormUserRepository, port string) {
 	// Setup router
 	router := mux.NewRouter()
 
-	// Wrap routes with tracing middleware
+	// Add middlewares (order matters!)
+	router.Use(httpDelivery.LoggingMiddleware)  // Logging first
 	router.Use(func(next http.Handler) http.Handler {
 		return httpDelivery.TracingMiddleware("http-request", next)
 	})
@@ -110,14 +127,13 @@ func startHTTPServer(repo *repository.GormUserRepository, port string) {
 		AllowCredentials: true,
 	})
 
-	log.Printf("🌐 HTTP server starting on port %s", port)
-	log.Printf("📊 Prometheus metrics: http://localhost:%s/metrics", port)
-	log.Printf("🔐 Auth endpoints: /auth/register, /auth/login")
-	log.Printf("👤 User endpoints: /users/me")
-	log.Printf("👑 Admin endpoints: /admin/*")
+	logger.Logger.Info().
+		Str("port", port).
+		Str("metrics_endpoint", "/metrics").
+		Msg("HTTP server started")
 
 	if err := http.ListenAndServe(":"+port, c.Handler(router)); err != nil {
-		log.Fatalf("Failed to start HTTP server: %v", err)
+		logger.Logger.Fatal().Err(err).Msg("Failed to start HTTP server")
 	}
 }
 
@@ -141,15 +157,20 @@ func startGRPCServer(repo *repository.GormUserRepository, port string) {
 	// Listen on TCP port
 	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
-		log.Fatalf("Failed to listen on port %s: %v", port, err)
+		logger.Logger.Fatal().
+			Str("port", port).
+			Err(err).
+			Msg("Failed to listen on gRPC port")
 	}
 
-	log.Printf("🚀 gRPC server starting on port %s", port)
-	log.Printf("📡 gRPC reflection enabled")
-	log.Printf("🔍 Distributed tracing enabled")
+	logger.Logger.Info().
+		Str("port", port).
+		Bool("reflection_enabled", true).
+		Bool("tracing_enabled", true).
+		Msg("gRPC server started")
 
 	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("Failed to start gRPC server: %v", err)
+		logger.Logger.Fatal().Err(err).Msg("Failed to start gRPC server")
 	}
 }
 

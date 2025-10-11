@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -15,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/tair/full-observability/pkg/auth"
+	"github.com/tair/full-observability/pkg/logger"
 )
 
 var grpcTracer = otel.Tracer("grpc-server")
@@ -55,7 +55,7 @@ func TracingInterceptor(
 	return resp, err
 }
 
-// LoggingInterceptor logs gRPC requests
+// LoggingInterceptor logs gRPC requests with structured logging
 func LoggingInterceptor(
 	ctx context.Context,
 	req interface{},
@@ -64,22 +64,50 @@ func LoggingInterceptor(
 ) (interface{}, error) {
 	start := time.Now()
 
-	// Call the handler
-	resp, err := handler(ctx, req)
-
-	// Log the request
-	duration := time.Since(start)
-	
-	// Extract trace ID from context if available
+	// Extract trace ID
 	traceID := "no-trace"
 	if span := oteltrace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		traceID = span.SpanContext().TraceID().String()
 	}
-	
+
+	// Log request start
+	logger.Info(ctx).
+		Str("method", info.FullMethod).
+		Str("protocol", "grpc").
+		Str("trace_id", traceID).
+		Msg("gRPC request started")
+
+	// Call the handler
+	resp, err := handler(ctx, req)
+
+	// Calculate duration
+	duration := time.Since(start)
+
+	// Log request completion
 	if err != nil {
-		log.Printf("gRPC [%s] trace_id=%s duration=%v error=%v", info.FullMethod, traceID, duration, err)
+		// Get gRPC status code
+		grpcStatus := "unknown"
+		if st, ok := status.FromError(err); ok {
+			grpcStatus = st.Code().String()
+		}
+
+		logger.Error(ctx).
+			Str("method", info.FullMethod).
+			Str("protocol", "grpc").
+			Dur("duration", duration).
+			Int64("duration_ms", duration.Milliseconds()).
+			Str("trace_id", traceID).
+			Str("grpc_status", grpcStatus).
+			Err(err).
+			Msg("gRPC request failed")
 	} else {
-		log.Printf("gRPC [%s] trace_id=%s duration=%v", info.FullMethod, traceID, duration)
+		logger.Info(ctx).
+			Str("method", info.FullMethod).
+			Str("protocol", "grpc").
+			Dur("duration", duration).
+			Int64("duration_ms", duration.Milliseconds()).
+			Str("trace_id", traceID).
+			Msg("gRPC request completed")
 	}
 
 	return resp, err
