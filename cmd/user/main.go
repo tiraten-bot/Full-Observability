@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -19,9 +21,25 @@ import (
 	httpDelivery "github.com/tair/full-observability/internal/user/delivery/http"
 	"github.com/tair/full-observability/internal/user/repository"
 	"github.com/tair/full-observability/pkg/database"
+	"github.com/tair/full-observability/pkg/tracing"
 )
 
 func main() {
+	// Initialize tracer
+	serviceName := getEnv("OTEL_SERVICE_NAME", "user-service")
+	tp, err := tracing.InitTracer(serviceName)
+	if err != nil {
+		log.Printf("Failed to initialize tracer: %v", err)
+	} else {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := tracing.Shutdown(ctx, tp); err != nil {
+				log.Printf("Failed to shutdown tracer: %v", err)
+			}
+		}()
+	}
+
 	// Load configuration from environment variables
 	dbConfig := database.Config{
 		Host:     getEnv("DB_HOST", "localhost"),
@@ -64,7 +82,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down servers...")
+	log.Println("🛑 Shutting down servers...")
 }
 
 func startHTTPServer(repo *repository.GormUserRepository, port string) {
@@ -73,6 +91,12 @@ func startHTTPServer(repo *repository.GormUserRepository, port string) {
 
 	// Setup router
 	router := mux.NewRouter()
+
+	// Wrap routes with tracing middleware
+	router.Use(func(next http.Handler) http.Handler {
+		return httpDelivery.TracingMiddleware("http-request", next)
+	})
+
 	handler.RegisterRoutes(router)
 
 	// Prometheus metrics endpoint
@@ -98,9 +122,10 @@ func startHTTPServer(repo *repository.GormUserRepository, port string) {
 }
 
 func startGRPCServer(repo *repository.GormUserRepository, port string) {
-	// Create gRPC server with interceptors
+	// Create gRPC server with interceptors (including tracing)
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
+			grpcDelivery.TracingInterceptor,  // Add tracing first
 			grpcDelivery.LoggingInterceptor,
 			grpcDelivery.AuthInterceptor,
 		),
@@ -121,6 +146,7 @@ func startGRPCServer(repo *repository.GormUserRepository, port string) {
 
 	log.Printf("🚀 gRPC server starting on port %s", port)
 	log.Printf("📡 gRPC reflection enabled")
+	log.Printf("🔍 Distributed tracing enabled")
 
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("Failed to start gRPC server: %v", err)
