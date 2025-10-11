@@ -8,7 +8,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
-	"github.com/tair/full-observability/internal/user"
+	httpDelivery "github.com/tair/full-observability/internal/user/delivery/http"
+	"github.com/tair/full-observability/internal/user/repository"
 	"github.com/tair/full-observability/pkg/database"
 )
 
@@ -30,14 +31,14 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize repository and service
-	repo := user.NewRepository(db)
+	// Initialize repository
+	repo := repository.NewPostgresUserRepository(db)
 	if err := repo.InitSchema(); err != nil {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
 
-	service := user.NewService(repo)
-	handler := user.NewHandler(service)
+	// Initialize HTTP handler
+	handler := httpDelivery.NewUserHandler(repo)
 
 	// Setup router
 	router := mux.NewRouter()
@@ -70,4 +71,3 @@ func getEnv(key, defaultValue string) string {
 	}
 	return defaultValue
 }
-

@@ -1,48 +1,49 @@
-package user
+package repository
 
 import (
 	"database/sql"
 	"fmt"
-	"time"
+
+	"github.com/tair/full-observability/internal/user/domain"
 )
 
-// Repository handles user data persistence
-type Repository struct {
+// PostgresUserRepository implements UserRepository interface
+type PostgresUserRepository struct {
 	db *sql.DB
 }
 
-// NewRepository creates a new user repository
-func NewRepository(db *sql.DB) *Repository {
-	return &Repository{db: db}
+// NewPostgresUserRepository creates a new PostgreSQL user repository
+func NewPostgresUserRepository(db *sql.DB) *PostgresUserRepository {
+	return &PostgresUserRepository{db: db}
 }
 
 // Create inserts a new user into the database
-func (r *Repository) Create(req CreateUserRequest) (*User, error) {
-	user := &User{
-		Username:  req.Username,
-		Email:     req.Email,
-		FullName:  req.FullName,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
+func (r *PostgresUserRepository) Create(user *domain.User) error {
 	query := `
 		INSERT INTO users (username, email, full_name, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
 	`
 
-	err := r.db.QueryRow(query, user.Username, user.Email, user.FullName, user.CreatedAt, user.UpdatedAt).Scan(&user.ID)
+	err := r.db.QueryRow(
+		query,
+		user.Username,
+		user.Email,
+		user.FullName,
+		user.CreatedAt,
+		user.UpdatedAt,
+	).Scan(&user.ID)
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
+		return fmt.Errorf("failed to create user: %w", err)
 	}
 
-	return user, nil
+	return nil
 }
 
-// GetByID retrieves a user by ID
-func (r *Repository) GetByID(id int) (*User, error) {
-	user := &User{}
+// FindByID retrieves a user by ID
+func (r *PostgresUserRepository) FindByID(id int) (*domain.User, error) {
+	user := &domain.User{}
 	query := `
 		SELECT id, username, email, full_name, created_at, updated_at
 		FROM users
@@ -62,14 +63,14 @@ func (r *Repository) GetByID(id int) (*User, error) {
 		return nil, fmt.Errorf("user not found")
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
 	return user, nil
 }
 
-// GetAll retrieves all users
-func (r *Repository) GetAll() ([]User, error) {
+// FindAll retrieves all users
+func (r *PostgresUserRepository) FindAll() ([]domain.User, error) {
 	query := `
 		SELECT id, username, email, full_name, created_at, updated_at
 		FROM users
@@ -78,13 +79,13 @@ func (r *Repository) GetAll() ([]User, error) {
 
 	rows, err := r.db.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get users: %w", err)
+		return nil, fmt.Errorf("failed to find users: %w", err)
 	}
 	defer rows.Close()
 
-	users := []User{}
+	users := []domain.User{}
 	for rows.Next() {
-		user := User{}
+		user := domain.User{}
 		err := rows.Scan(
 			&user.ID,
 			&user.Username,
@@ -103,36 +104,32 @@ func (r *Repository) GetAll() ([]User, error) {
 }
 
 // Update updates a user's information
-func (r *Repository) Update(id int, req UpdateUserRequest) (*User, error) {
+func (r *PostgresUserRepository) Update(user *domain.User) error {
 	query := `
 		UPDATE users
 		SET email = $1, full_name = $2, updated_at = $3
 		WHERE id = $4
-		RETURNING id, username, email, full_name, created_at, updated_at
 	`
 
-	user := &User{}
-	err := r.db.QueryRow(query, req.Email, req.FullName, time.Now(), id).Scan(
-		&user.ID,
-		&user.Username,
-		&user.Email,
-		&user.FullName,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("user not found")
-	}
+	result, err := r.db.Exec(query, user.Email, user.FullName, user.UpdatedAt, user.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update user: %w", err)
+		return fmt.Errorf("failed to update user: %w", err)
 	}
 
-	return user, nil
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	return nil
 }
 
 // Delete removes a user from the database
-func (r *Repository) Delete(id int) error {
+func (r *PostgresUserRepository) Delete(id int) error {
 	query := `DELETE FROM users WHERE id = $1`
 	result, err := r.db.Exec(query, id)
 	if err != nil {
@@ -151,8 +148,21 @@ func (r *Repository) Delete(id int) error {
 	return nil
 }
 
+// Count returns the total number of users
+func (r *PostgresUserRepository) Count() (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM users`
+
+	err := r.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	return count, nil
+}
+
 // InitSchema creates the users table if it doesn't exist
-func (r *Repository) InitSchema() error {
+func (r *PostgresUserRepository) InitSchema() error {
 	query := `
 		CREATE TABLE IF NOT EXISTS users (
 			id SERIAL PRIMARY KEY,
