@@ -3,6 +3,7 @@ package http
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -207,11 +208,88 @@ func (h *InventoryHandler) UpdateQuantity(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// GetByProductID handles GET /api/inventory/product/{product_id} (authenticated user)
+func (h *InventoryHandler) GetByProductID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseUint(vars["product_id"], 10, 32)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+		return
+	}
+
+	inventory, err := h.repo.FindByProductID(uint(productID))
+	if err != nil {
+		respondJSON(w, http.StatusNotFound, Response{
+			Success: false,
+			Error:   "Inventory not found for this product",
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data:    inventory,
+	})
+}
+
+// CheckAvailability handles GET /api/inventory/check/{product_id} (authenticated user)
+func (h *InventoryHandler) CheckAvailability(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseUint(vars["product_id"], 10, 32)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+		return
+	}
+
+	// Get requested quantity from query param (default: 1)
+	requestedQty, _ := strconv.Atoi(r.URL.Query().Get("quantity"))
+	if requestedQty <= 0 {
+		requestedQty = 1
+	}
+
+	inventory, err := h.repo.FindByProductID(uint(productID))
+	if err != nil {
+		respondJSON(w, http.StatusNotFound, Response{
+			Success: false,
+			Error:   "Product not found in inventory",
+		})
+		return
+	}
+
+	available := inventory.Quantity >= requestedQty
+	message := "Product is available"
+	if !available {
+		message = fmt.Sprintf("Insufficient quantity. Available: %d, Requested: %d", inventory.Quantity, requestedQty)
+	}
+
+	respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data: map[string]interface{}{
+			"product_id":  productID,
+			"available":   available,
+			"quantity":    inventory.Quantity,
+			"requested":   requestedQty,
+			"location":    inventory.Location,
+			"message":     message,
+		},
+	})
+}
+
 // RegisterRoutes registers all inventory routes
 func (h *InventoryHandler) RegisterRoutes(router *mux.Router) {
 	// Public routes (no auth)
 	router.HandleFunc("/api/inventory", h.ListInventory).Methods("GET")
 	router.HandleFunc("/api/inventory/{id}", h.GetInventory).Methods("GET")
+
+	// Authenticated user routes (any logged-in user)
+	router.HandleFunc("/api/inventory/product/{product_id}", AuthMiddleware(h.userClient)(h.GetByProductID)).Methods("GET")
+	router.HandleFunc("/api/inventory/check/{product_id}", AuthMiddleware(h.userClient)(h.CheckAvailability)).Methods("GET")
 
 	// Admin routes (require admin role)
 	router.HandleFunc("/api/inventory", AdminMiddleware(h.userClient)(h.CreateInventory)).Methods("POST")
