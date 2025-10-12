@@ -31,6 +31,7 @@ type ProductHandler struct {
 	repo           domain.ProductRepository
 	requestCounter *prometheus.CounterVec
 	requestLatency *prometheus.HistogramVec
+	requestSummary *prometheus.SummaryVec
 	totalProducts  prometheus.Gauge
 }
 
@@ -102,6 +103,22 @@ func newProductHandler(
 		[]string{"method", "endpoint"},
 	)
 
+	// Summary metric for percentile calculation (p50, p90, p95, p99)
+	requestSummary := prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name: "product_service_request_duration_summary",
+			Help: "Summary of request durations with percentiles (client-side quantiles)",
+			Objectives: map[float64]float64{
+				0.5:  0.05,  // p50 (median) with 5% error
+				0.9:  0.01,  // p90 with 1% error
+				0.95: 0.01,  // p95 with 1% error
+				0.99: 0.001, // p99 with 0.1% error
+			},
+			MaxAge: 10 * time.Minute, // Keep data for 10 minutes
+		},
+		[]string{"method", "endpoint"},
+	)
+
 	totalProducts := prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "product_service_total_products",
@@ -111,6 +128,7 @@ func newProductHandler(
 
 	prometheus.MustRegister(requestCounter)
 	prometheus.MustRegister(requestLatency)
+	prometheus.MustRegister(requestSummary)
 	prometheus.MustRegister(totalProducts)
 
 	return &ProductHandler{
@@ -124,6 +142,7 @@ func newProductHandler(
 		repo:               repo,
 		requestCounter:     requestCounter,
 		requestLatency:     requestLatency,
+		requestSummary:     requestSummary,
 		totalProducts:      totalProducts,
 	}
 }
@@ -155,8 +174,11 @@ func (h *ProductHandler) metricsMiddleware(endpoint string, next http.HandlerFun
 		next.ServeHTTP(rw, r)
 
 		duration := time.Since(start).Seconds()
-		h.requestLatency.WithLabelValues(r.Method, endpoint).Observe(duration)
+		
+		// Record metrics
 		h.requestCounter.WithLabelValues(r.Method, endpoint, strconv.Itoa(rw.statusCode)).Inc()
+		h.requestLatency.WithLabelValues(r.Method, endpoint).Observe(duration)
+		h.requestSummary.WithLabelValues(r.Method, endpoint).Observe(duration)
 	}
 }
 
