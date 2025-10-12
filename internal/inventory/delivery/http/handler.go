@@ -296,6 +296,11 @@ func (h *InventoryHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/inventory/{product_id}/quantity", AdminMiddleware(h.userClient)(h.UpdateQuantity)).Methods("PATCH")
 }
 
+// GetUserClient returns the user service client
+func (h *InventoryHandler) GetUserClient() *client.UserServiceClient {
+	return h.userClient
+}
+
 // RegisterHealthCheck registers health check endpoint
 func (h *InventoryHandler) RegisterHealthCheck(router *mux.Router, db *sql.DB) {
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

@@ -91,11 +91,11 @@ func startHTTPServer(handler *httpDelivery.InventoryHandler, db *sql.DB, port st
 	// Setup router
 	router := mux.NewRouter()
 
-	// Add middlewares (order matters!)
-	router.Use(httpDelivery.LoggingMiddleware) // Logging first
-	router.Use(func(next http.Handler) http.Handler {
-		return httpDelivery.TracingMiddleware("http-request", next)
-	})
+	// Create middleware configuration
+	middlewareConfig := httpDelivery.DefaultMiddlewareConfig(handler.GetUserClient())
+
+	// Register all middlewares using middleware registration system
+	httpDelivery.RegisterMiddlewares(router, middlewareConfig)
 
 	// Register routes
 	handler.RegisterRoutes(router)
@@ -106,20 +106,15 @@ func startHTTPServer(handler *httpDelivery.InventoryHandler, db *sql.DB, port st
 	// Prometheus metrics endpoint
 	router.Handle("/metrics", promhttp.Handler())
 
-	// CORS middleware
-	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"*"},
-		AllowCredentials: true,
-	})
+	// Setup CORS using middleware registration system
+	corsHandler := httpDelivery.SetupCORS(middlewareConfig)
 
 	logger.Logger.Info().
 		Str("port", port).
 		Str("metrics_endpoint", "/metrics").
 		Msg("HTTP server started")
 
-	if err := http.ListenAndServe(":"+port, c.Handler(router)); err != nil {
+	if err := http.ListenAndServe(":"+port, corsHandler(router)); err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to start HTTP server")
 	}
 }
