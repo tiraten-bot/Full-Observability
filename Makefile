@@ -13,6 +13,7 @@ help:
 	@echo "  docker-down    - Stop docker containers"
 	@echo "  run-user       - Run user service locally"
 	@echo "  run-product    - Run product service locally"
+	@echo "  run-inventory  - Run inventory service locally"
 
 # Install protoc plugins
 proto-install:
@@ -81,4 +82,7 @@ run-user:
 
 run-product:
 	go run cmd/product/main.go
+
+run-inventory:
+	go run cmd/inventory/main.go
 

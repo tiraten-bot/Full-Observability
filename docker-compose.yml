@@ -86,6 +86,32 @@ services:
       - observability-network
     restart: unless-stopped
 
+  # Inventory Service
+  inventory-service:
+    build:
+      context: .
+      dockerfile: dockerfiles/inventory.Dockerfile
+    container_name: inventory-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: inventorydb
+      DB_SSLMODE: disable
+      HTTP_PORT: 8082
+      OTEL_SERVICE_NAME: inventory-service
+      ENVIRONMENT: production
+      LOG_LEVEL: info
+    ports:
+      - "8082:8082"  # HTTP
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - observability-network
+    restart: unless-stopped
+
   # Prometheus
   prometheus:
     image: prom/prometheus:latest
