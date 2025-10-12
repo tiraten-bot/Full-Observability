@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -18,6 +19,57 @@ import (
 )
 
 var grpcTracer = otel.Tracer("grpc-server")
+
+// gRPC Prometheus metrics
+var (
+	grpcRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "user_service_grpc_requests_total",
+			Help: "Total number of gRPC requests",
+		},
+		[]string{"method", "status_code"},
+	)
+
+	grpcRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "user_service_grpc_request_duration_seconds",
+			Help:    "Duration of gRPC requests in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method"},
+	)
+
+	grpcRequestSummary = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name: "user_service_grpc_request_duration_summary",
+			Help: "Summary of gRPC request durations with percentiles",
+			Objectives: map[float64]float64{
+				0.5:  0.05,
+				0.9:  0.01,
+				0.95: 0.01,
+				0.99: 0.001,
+			},
+			MaxAge: 10 * time.Minute,
+		},
+		[]string{"method"},
+	)
+
+	grpcErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "user_service_grpc_errors_total",
+			Help: "Total number of gRPC errors",
+		},
+		[]string{"method", "error_code"},
+	)
+)
+
+func init() {
+	// Register gRPC metrics
+	prometheus.MustRegister(grpcRequestsTotal)
+	prometheus.MustRegister(grpcRequestDuration)
+	prometheus.MustRegister(grpcRequestSummary)
+	prometheus.MustRegister(grpcErrorsTotal)
+}
 
 // TracingInterceptor adds distributed tracing to gRPC calls
 func TracingInterceptor(
@@ -51,6 +103,41 @@ func TracingInterceptor(
 	} else {
 		span.SetStatus(codes.Ok, "success")
 	}
+
+	return resp, err
+}
+
+// MetricsInterceptor collects Prometheus metrics for gRPC calls
+func MetricsInterceptor(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (interface{}, error) {
+	start := time.Now()
+
+	// Call the handler
+	resp, err := handler(ctx, req)
+
+	// Calculate duration
+	duration := time.Since(start).Seconds()
+
+	// Get gRPC status code
+	statusCode := "OK"
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			statusCode = st.Code().String()
+			// Track errors separately
+			grpcErrorsTotal.WithLabelValues(info.FullMethod, statusCode).Inc()
+		} else {
+			statusCode = "Unknown"
+		}
+	}
+
+	// Record metrics
+	grpcRequestsTotal.WithLabelValues(info.FullMethod, statusCode).Inc()
+	grpcRequestDuration.WithLabelValues(info.FullMethod).Observe(duration)
+	grpcRequestSummary.WithLabelValues(info.FullMethod).Observe(duration)
 
 	return resp, err
 }
