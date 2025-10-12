@@ -57,6 +57,7 @@ wire:
 	@echo "Generating dependency injection code with Wire..."
 	@cd internal/user && go generate
 	@cd internal/product && go generate
+	@cd internal/inventory && go generate
 	@echo "Wire generation complete!"
 
 # Clean generated files
@@ -66,6 +67,7 @@ clean:
 	rm -f api/proto/product/*.pb.go
 	rm -f internal/user/wire_gen.go
 	rm -f internal/product/wire_gen.go
+	rm -f internal/inventory/wire_gen.go
 	rm -rf cmd/user/docs/docs.go cmd/user/docs/swagger.json cmd/user/docs/swagger.yaml
 	rm -rf cmd/product/docs/docs.go cmd/product/docs/swagger.json cmd/product/docs/swagger.yaml
 

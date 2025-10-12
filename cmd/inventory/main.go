@@ -11,8 +11,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 
+	"github.com/tair/full-observability/internal/inventory"
 	httpDelivery "github.com/tair/full-observability/internal/inventory/delivery/http"
-	"github.com/tair/full-observability/internal/inventory/repository"
+	"github.com/tair/full-observability/internal/inventory/domain"
 	"github.com/tair/full-observability/pkg/database"
 	"github.com/tair/full-observability/pkg/logger"
 )
@@ -54,17 +55,22 @@ func main() {
 	}
 	defer sqlDB.Close()
 
-	// Initialize repository
-	repo := repository.NewGormInventoryRepository(db)
-	if err := repo.AutoMigrate(); err != nil {
+	// Run migrations
+	if err := db.AutoMigrate(&domain.Inventory{}); err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to run migrations")
+	}
+
+	// Initialize handler with Wire DI
+	handler, err := inventory.InitializeHTTPHandler(db)
+	if err != nil {
+		logger.Logger.Fatal().Err(err).Msg("Failed to initialize handler")
 	}
 
 	logger.Logger.Info().Msg("Database initialized successfully")
 
 	// Start HTTP server
 	httpPort := getEnv("HTTP_PORT", "8082")
-	startHTTPServer(repo, sqlDB, httpPort)
+	startHTTPServer(handler, sqlDB, httpPort)
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
@@ -74,10 +80,7 @@ func main() {
 	logger.Logger.Info().Msg("Shutting down server...")
 }
 
-func startHTTPServer(repo *repository.GormInventoryRepository, db *sql.DB, port string) {
-	// Initialize HTTP handler
-	handler := httpDelivery.NewInventoryHandler(repo)
-
+func startHTTPServer(handler *httpDelivery.InventoryHandler, db *sql.DB, port string) {
 	// Setup router
 	router := mux.NewRouter()
 
