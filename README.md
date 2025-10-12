@@ -13,6 +13,8 @@ Bu proje, Go ile yazılmış mikroservis mimarisi ve tam observability (gözleml
 ### 2. Product Service (Port: 8081)
 - Ürün yönetimi (CRUD)
 - **CQRS Pattern** (Command Query Responsibility Segregation)
+- **JWT Authentication** (Admin endpoints protected)
+- **Role-based Authorization** (Admin/Public endpoints)
 - Stok yönetimi
 - Kategori bazlı filtreleme
 - İstatistik endpoint'i
