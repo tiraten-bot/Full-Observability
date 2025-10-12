@@ -24,9 +24,15 @@ proto-install:
 proto:
 	@echo "Generating Go code from proto files..."
 	@mkdir -p api/proto/user
+	@mkdir -p api/proto/product
+	@echo "Generating User Service proto files..."
 	protoc --go_out=. --go_opt=paths=source_relative \
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		api/proto/user/user.proto
+	@echo "Generating Product Service proto files..."
+	protoc --go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+		api/proto/product/product.proto
 	@echo "Proto generation complete!"
 
 # Generate Swagger documentation
@@ -56,6 +62,7 @@ wire:
 clean:
 	@echo "Cleaning generated files..."
 	rm -f api/proto/user/*.pb.go
+	rm -f api/proto/product/*.pb.go
 	rm -f internal/user/wire_gen.go
 	rm -f internal/product/wire_gen.go
 	rm -rf cmd/user/docs/docs.go cmd/user/docs/swagger.json cmd/user/docs/swagger.yaml
