@@ -1,17 +1,17 @@
 basePath: /
-host: localhost:8081
+host: localhost:8082
 info:
   contact:
-    email: support@swagger.io
+    email: support@example.com
     name: API Support
-    url: http://www.swagger.io/support
-  description: This is a product service with full observability (logging, tracing,
-    metrics)
+    url: http://github.com/tair/full-observability
+  description: This is the Inventory Service API with full observability (logging,
+    tracing, metrics)
   license:
-    name: Apache 2.0
-    url: http://www.apache.org/licenses/LICENSE-2.0.html
+    name: MIT
+    url: https://github.com/tair/full-observability/blob/main/LICENSE
   termsOfService: http://swagger.io/terms/
-  title: Product Service API
+  title: Inventory Service API
   version: "1.0"
 paths:
   /admin/stats:
@@ -1304,3 +1304,10 @@ securityDefinitions:
     name: Authorization
     type: apiKey
 swagger: "2.0"
+tags:
+- description: Inventory management endpoints
+  name: Inventory
+- description: Health check endpoints
+  name: Health
+- description: Swagger documentation endpoints
+  name: Swagger

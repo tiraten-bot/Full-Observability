@@ -44,6 +44,8 @@ swagger:
 	swag init -g cmd/user/docs.go -o cmd/user/docs --parseDependency --parseInternal
 	@echo "Generating Product Service Swagger docs..."
 	swag init -g cmd/product/docs.go -o cmd/product/docs --parseDependency --parseInternal
+	@echo "Generating Inventory Service Swagger docs..."
+	swag init -g cmd/inventory/docs.go -o cmd/inventory/docs --parseDependency --parseInternal
 	@echo "Swagger generation complete!"
 
 # Install Wire
@@ -70,6 +72,7 @@ clean:
 	rm -f internal/inventory/wire_gen.go
 	rm -rf cmd/user/docs/docs.go cmd/user/docs/swagger.json cmd/user/docs/swagger.yaml
 	rm -rf cmd/product/docs/docs.go cmd/product/docs/swagger.json cmd/product/docs/swagger.yaml
+	rm -rf cmd/inventory/docs/docs.go cmd/inventory/docs/swagger.json cmd/inventory/docs/swagger.yaml
 
 # Docker commands
 docker-up:

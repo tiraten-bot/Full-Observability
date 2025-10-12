@@ -12,12 +12,12 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "url": "http://www.swagger.io/support",
-            "email": "support@swagger.io"
+            "url": "http://github.com/tair/full-observability",
+            "email": "support@example.com"
         },
         "license": {
-            "name": "Apache 2.0",
-            "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+            "name": "MIT",
+            "url": "https://github.com/tair/full-observability/blob/main/LICENSE"
         },
         "version": "{{.Version}}"
     },
@@ -2049,17 +2049,31 @@ const docTemplate = `{
             "name": "Authorization",
             "in": "header"
         }
-    }
+    },
+    "tags": [
+        {
+            "description": "Inventory management endpoints",
+            "name": "Inventory"
+        },
+        {
+            "description": "Health check endpoints",
+            "name": "Health"
+        },
+        {
+            "description": "Swagger documentation endpoints",
+            "name": "Swagger"
+        }
+    ]
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8081",
+	Host:             "localhost:8082",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "Product Service API",
-	Description:      "This is a product service with full observability (logging, tracing, metrics)",
+	Title:            "Inventory Service API",
+	Description:      "This is the Inventory Service API with full observability (logging, tracing, metrics)",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
