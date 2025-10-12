@@ -35,6 +35,14 @@ type UserHandler struct {
 	requestLatency *prometheus.HistogramVec
 	requestSummary *prometheus.SummaryVec
 	activeUsers    prometheus.Gauge
+	
+	// Business metrics
+	failedLogins       *prometheus.CounterVec
+	successfulLogins   prometheus.Counter
+	userRegistrations  prometheus.Counter
+	usersByRole        *prometheus.GaugeVec
+	inactiveUsers      prometheus.Gauge
+	authErrors         *prometheus.CounterVec
 }
 
 // NewUserHandler creates a new user handler (manual DI for backwards compatibility)
@@ -136,10 +144,62 @@ func newUserHandler(
 		},
 	)
 
+	// Business-specific metrics
+	failedLogins := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "user_service_failed_logins_total",
+			Help: "Total number of failed login attempts",
+		},
+		[]string{"reason"}, // reason: invalid_credentials, user_not_found, account_disabled
+	)
+
+	successfulLogins := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "user_service_successful_logins_total",
+			Help: "Total number of successful logins",
+		},
+	)
+
+	userRegistrations := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "user_service_registrations_total",
+			Help: "Total number of user registrations",
+		},
+	)
+
+	usersByRole := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "user_service_users_by_role",
+			Help: "Number of users by role",
+		},
+		[]string{"role"},
+	)
+
+	inactiveUsers := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "user_service_inactive_users",
+			Help: "Number of inactive users in the system",
+		},
+	)
+
+	authErrors := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "user_service_auth_errors_total",
+			Help: "Total number of authentication/authorization errors",
+		},
+		[]string{"operation", "error_type"},
+	)
+
 	prometheus.MustRegister(requestCounter)
 	prometheus.MustRegister(requestLatency)
 	prometheus.MustRegister(requestSummary)
 	prometheus.MustRegister(activeUsers)
+	prometheus.MustRegister(failedLogins)
+	prometheus.MustRegister(successfulLogins)
+	prometheus.MustRegister(userRegistrations)
+	prometheus.MustRegister(usersByRole)
+	prometheus.MustRegister(inactiveUsers)
+	prometheus.MustRegister(authErrors)
 
 	return &UserHandler{
 		registerHandler:     registerHandler,
@@ -156,6 +216,12 @@ func newUserHandler(
 		requestLatency:      requestLatency,
 		requestSummary:      requestSummary,
 		activeUsers:         activeUsers,
+		failedLogins:        failedLogins,
+		successfulLogins:    successfulLogins,
+		userRegistrations:   userRegistrations,
+		usersByRole:         usersByRole,
+		inactiveUsers:       inactiveUsers,
+		authErrors:          authErrors,
 	}
 }
 
@@ -211,11 +277,13 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.registerHandler.Handle(cmd)
 	if err != nil {
+		h.authErrors.WithLabelValues("register", "validation_error").Inc()
 		h.respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	h.updateActiveUsersMetric()
+	h.userRegistrations.Inc()
+	h.updateBusinessMetrics()
 	h.respondJSON(w, http.StatusCreated, user)
 }
 
@@ -238,10 +306,20 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.loginHandler.Handle(cmd)
 	if err != nil {
+		// Track failed logins with reason
+		reason := "invalid_credentials"
+		errorMsg := err.Error()
+		if errorMsg == "user not found" {
+			reason = "user_not_found"
+		} else if errorMsg == "user is not active" {
+			reason = "account_disabled"
+		}
+		h.failedLogins.WithLabelValues(reason).Inc()
 		h.respondError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
+	h.successfulLogins.Inc()
 	h.respondJSON(w, http.StatusOK, response)
 }
 
@@ -325,11 +403,13 @@ func (h *UserHandler) CreateAdmin(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.registerHandler.Handle(cmd)
 	if err != nil {
+		h.authErrors.WithLabelValues("create_admin", "validation_error").Inc()
 		h.respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	h.updateActiveUsersMetric()
+	h.userRegistrations.Inc()
+	h.updateBusinessMetrics()
 	h.respondJSON(w, http.StatusCreated, user)
 }
 
@@ -425,11 +505,12 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	cmd := command.DeleteUserCommand{ID: uint(id)}
 	if err := h.deleteHandler.Handle(cmd); err != nil {
+		h.authErrors.WithLabelValues("delete", "not_found").Inc()
 		h.respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	h.updateActiveUsersMetric()
+	h.updateBusinessMetrics()
 	h.respondJSON(w, http.StatusOK, map[string]string{"message": "User deleted successfully"})
 }
 
@@ -533,6 +614,39 @@ func (h *UserHandler) updateActiveUsersMetric() {
 	count, err := h.repo.Count()
 	if err == nil {
 		h.activeUsers.Set(float64(count))
+	}
+}
+
+// updateBusinessMetrics updates all business-specific metrics
+func (h *UserHandler) updateBusinessMetrics() {
+	// Get all users to calculate metrics
+	users, err := h.repo.FindAll(10000, 0)
+	if err != nil {
+		return
+	}
+
+	var activeCount, inactiveCount int64
+	roleCount := make(map[string]int64)
+
+	for _, user := range users {
+		// Count active/inactive users
+		if user.IsActive {
+			activeCount++
+		} else {
+			inactiveCount++
+		}
+
+		// Count users by role
+		roleCount[user.Role]++
+	}
+
+	// Update gauges
+	h.activeUsers.Set(float64(activeCount))
+	h.inactiveUsers.Set(float64(inactiveCount))
+	
+	// Update role counts
+	for role, count := range roleCount {
+		h.usersByRole.WithLabelValues(role).Set(float64(count))
 	}
 }
 
