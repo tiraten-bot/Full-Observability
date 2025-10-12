@@ -34,7 +34,7 @@ type ProductHandler struct {
 	totalProducts  prometheus.Gauge
 }
 
-// NewProductHandler creates a new product handler with CQRS pattern
+// NewProductHandler creates a new product handler with CQRS pattern (manual DI for backwards compatibility)
 func NewProductHandler(repo domain.ProductRepository) *ProductHandler {
 	// Initialize command handlers
 	createHandler := command.NewCreateProductHandler(repo)
@@ -47,6 +47,43 @@ func NewProductHandler(repo domain.ProductRepository) *ProductHandler {
 	listHandler := query.NewListProductsHandler(repo)
 	statsHandler := query.NewGetStatsHandler(repo)
 
+	return newProductHandler(
+		createHandler, updateHandler, deleteHandler, updateStockHandler,
+		getProductHandler, listHandler, statsHandler,
+		repo,
+	)
+}
+
+// NewProductHandlerWithDI creates a new product handler using dependency injection
+// This is used by Wire for automatic dependency injection
+func NewProductHandlerWithDI(
+	createHandler *command.CreateProductHandler,
+	updateHandler *command.UpdateProductHandler,
+	deleteHandler *command.DeleteProductHandler,
+	updateStockHandler *command.UpdateStockHandler,
+	getProductHandler *query.GetProductHandler,
+	listHandler *query.ListProductsHandler,
+	statsHandler *query.GetStatsHandler,
+	repo domain.ProductRepository,
+) *ProductHandler {
+	return newProductHandler(
+		createHandler, updateHandler, deleteHandler, updateStockHandler,
+		getProductHandler, listHandler, statsHandler,
+		repo,
+	)
+}
+
+// newProductHandler is the internal constructor used by both manual and Wire DI
+func newProductHandler(
+	createHandler *command.CreateProductHandler,
+	updateHandler *command.UpdateProductHandler,
+	deleteHandler *command.DeleteProductHandler,
+	updateStockHandler *command.UpdateStockHandler,
+	getProductHandler *query.GetProductHandler,
+	listHandler *query.ListProductsHandler,
+	statsHandler *query.GetStatsHandler,
+	repo domain.ProductRepository,
+) *ProductHandler {
 	// Initialize Prometheus metrics
 	requestCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{

@@ -1,0 +1,129 @@
+//go:build wireinject
+// +build wireinject
+
+package product
+
+import (
+	"github.com/google/wire"
+	"gorm.io/gorm"
+
+	"github.com/tair/full-observability/internal/product/delivery/http"
+	"github.com/tair/full-observability/internal/product/domain"
+	"github.com/tair/full-observability/internal/product/repository"
+	"github.com/tair/full-observability/internal/product/usecase/command"
+	"github.com/tair/full-observability/internal/product/usecase/query"
+)
+
+// ProvideProductRepository provides the product repository
+func ProvideProductRepository(db *gorm.DB) domain.ProductRepository {
+	return repository.NewGormProductRepository(db)
+}
+
+// Command Handlers Providers
+func ProvideCreateProductHandler(repo domain.ProductRepository) *command.CreateProductHandler {
+	return command.NewCreateProductHandler(repo)
+}
+
+func ProvideUpdateProductHandler(repo domain.ProductRepository) *command.UpdateProductHandler {
+	return command.NewUpdateProductHandler(repo)
+}
+
+func ProvideDeleteProductHandler(repo domain.ProductRepository) *command.DeleteProductHandler {
+	return command.NewDeleteProductHandler(repo)
+}
+
+func ProvideUpdateStockHandler(repo domain.ProductRepository) *command.UpdateStockHandler {
+	return command.NewUpdateStockHandler(repo)
+}
+
+// Query Handlers Providers
+func ProvideGetProductHandler(repo domain.ProductRepository) *query.GetProductHandler {
+	return query.NewGetProductHandler(repo)
+}
+
+func ProvideListProductsHandler(repo domain.ProductRepository) *query.ListProductsHandler {
+	return query.NewListProductsHandler(repo)
+}
+
+func ProvideGetStatsHandler(repo domain.ProductRepository) *query.GetStatsHandler {
+	return query.NewGetStatsHandler(repo)
+}
+
+// CommandHandlers is a struct that holds all command handlers
+type CommandHandlers struct {
+	CreateHandler      *command.CreateProductHandler
+	UpdateHandler      *command.UpdateProductHandler
+	DeleteHandler      *command.DeleteProductHandler
+	UpdateStockHandler *command.UpdateStockHandler
+}
+
+// QueryHandlers is a struct that holds all query handlers
+type QueryHandlers struct {
+	GetProductHandler  *query.GetProductHandler
+	ListHandler        *query.ListProductsHandler
+	StatsHandler       *query.GetStatsHandler
+}
+
+// ProvideCommandHandlers provides all command handlers
+func ProvideCommandHandlers(
+	createHandler *command.CreateProductHandler,
+	updateHandler *command.UpdateProductHandler,
+	deleteHandler *command.DeleteProductHandler,
+	updateStockHandler *command.UpdateStockHandler,
+) *CommandHandlers {
+	return &CommandHandlers{
+		CreateHandler:      createHandler,
+		UpdateHandler:      updateHandler,
+		DeleteHandler:      deleteHandler,
+		UpdateStockHandler: updateStockHandler,
+	}
+}
+
+// ProvideQueryHandlers provides all query handlers
+func ProvideQueryHandlers(
+	getProductHandler *query.GetProductHandler,
+	listHandler *query.ListProductsHandler,
+	statsHandler *query.GetStatsHandler,
+) *QueryHandlers {
+	return &QueryHandlers{
+		GetProductHandler:  getProductHandler,
+		ListHandler:        listHandler,
+		StatsHandler:       statsHandler,
+	}
+}
+
+// Wire sets
+var RepositorySet = wire.NewSet(
+	ProvideProductRepository,
+)
+
+var CommandHandlerSet = wire.NewSet(
+	ProvideCreateProductHandler,
+	ProvideUpdateProductHandler,
+	ProvideDeleteProductHandler,
+	ProvideUpdateStockHandler,
+	ProvideCommandHandlers,
+)
+
+var QueryHandlerSet = wire.NewSet(
+	ProvideGetProductHandler,
+	ProvideListProductsHandler,
+	ProvideGetStatsHandler,
+	ProvideQueryHandlers,
+)
+
+var AllHandlersSet = wire.NewSet(
+	RepositorySet,
+	CommandHandlerSet,
+	QueryHandlerSet,
+)
+
+// InitializeHTTPHandler initializes HTTP handler with all dependencies
+func InitializeHTTPHandler(db *gorm.DB) (*http.ProductHandler, error) {
+	wire.Build(
+		AllHandlersSet,
+		http.NewProductHandlerWithDI,
+	)
+	return nil, nil
+}
+
