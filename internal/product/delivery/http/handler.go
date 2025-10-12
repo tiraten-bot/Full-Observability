@@ -249,6 +249,11 @@ func (h *ProductHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/products/stats", h.metricsMiddleware("/api/products/stats", h.GetStats)).Methods("GET")
 	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", h.GetProduct)).Methods("GET")
 
+	// Authenticated user routes (any logged-in user)
+	router.HandleFunc("/api/products/favorites", h.metricsMiddleware("/api/products/favorites", AuthMiddleware(h.userClient)(h.GetMyFavorites))).Methods("GET")
+	router.HandleFunc("/api/products/{id}/favorite", h.metricsMiddleware("/api/products/{id}/favorite", AuthMiddleware(h.userClient)(h.AddToFavorites))).Methods("POST")
+	router.HandleFunc("/api/products/{id}/favorite", h.metricsMiddleware("/api/products/{id}/favorite", AuthMiddleware(h.userClient)(h.RemoveFromFavorites))).Methods("DELETE")
+
 	// Admin routes (admin role required via gRPC verification)
 	router.HandleFunc("/api/products", h.metricsMiddleware("/api/products", AdminMiddleware(h.userClient)(h.CreateProduct))).Methods("POST")
 	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", AdminMiddleware(h.userClient)(h.UpdateProduct))).Methods("PUT")
@@ -605,6 +610,132 @@ func (h *ProductHandler) updateBusinessMetrics() {
 	
 	// Update total products
 	h.totalProducts.Set(float64(len(products)))
+}
+
+// GetMyFavorites handles GET /api/products/favorites (authenticated user)
+func (h *ProductHandler) GetMyFavorites(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(uint)
+	if !ok {
+		respondJSON(w, http.StatusUnauthorized, Response{
+			Success: false,
+			Error:   "User ID not found in context",
+		})
+		return
+	}
+
+	// Get favorite product IDs
+	favoriteIDs, err := h.repo.GetUserFavorites(userID)
+	if err != nil {
+		logger.Logger.Error().Err(err).Msg("Failed to get favorites")
+		respondJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   "Failed to get favorites",
+		})
+		return
+	}
+
+	// Get product details
+	var products []domain.Product
+	if len(favoriteIDs) > 0 {
+		for _, id := range favoriteIDs {
+			product, err := h.repo.FindByID(id)
+			if err == nil {
+				products = append(products, *product)
+			}
+		}
+	}
+
+	respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data: map[string]interface{}{
+			"favorites": products,
+			"total":     len(products),
+		},
+	})
+}
+
+// AddToFavorites handles POST /api/products/{id}/favorite (authenticated user)
+func (h *ProductHandler) AddToFavorites(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(uint)
+	if !ok {
+		respondJSON(w, http.StatusUnauthorized, Response{
+			Success: false,
+			Error:   "User ID not found in context",
+		})
+		return
+	}
+
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+		return
+	}
+
+	// Check if product exists
+	_, err = h.repo.FindByID(uint(productID))
+	if err != nil {
+		respondJSON(w, http.StatusNotFound, Response{
+			Success: false,
+			Error:   "Product not found",
+		})
+		return
+	}
+
+	// Add to favorites
+	if err := h.repo.AddFavorite(userID, uint(productID)); err != nil {
+		logger.Logger.Error().Err(err).Msg("Failed to add favorite")
+		respondJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Failed to add to favorites",
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: "Product added to favorites",
+	})
+}
+
+// RemoveFromFavorites handles DELETE /api/products/{id}/favorite (authenticated user)
+func (h *ProductHandler) RemoveFromFavorites(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(uint)
+	if !ok {
+		respondJSON(w, http.StatusUnauthorized, Response{
+			Success: false,
+			Error:   "User ID not found in context",
+		})
+		return
+	}
+
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+		return
+	}
+
+	// Remove from favorites
+	if err := h.repo.RemoveFavorite(userID, uint(productID)); err != nil {
+		logger.Logger.Error().Err(err).Msg("Failed to remove favorite")
+		respondJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Failed to remove from favorites",
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: "Product removed from favorites",
+	})
 }
 
 // respondJSON sends a JSON response
