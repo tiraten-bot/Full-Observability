@@ -33,6 +33,13 @@ type ProductHandler struct {
 	requestLatency *prometheus.HistogramVec
 	requestSummary *prometheus.SummaryVec
 	totalProducts  prometheus.Gauge
+	
+	// Business metrics
+	outOfStockProducts prometheus.Gauge
+	lowStockProducts   prometheus.Gauge
+	productsByCategory *prometheus.GaugeVec
+	productErrors      *prometheus.CounterVec
+	stockUpdates       *prometheus.CounterVec
 }
 
 // NewProductHandler creates a new product handler with CQRS pattern (manual DI for backwards compatibility)
@@ -126,10 +133,54 @@ func newProductHandler(
 		},
 	)
 
+	// Business-specific metrics
+	outOfStockProducts := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "product_service_out_of_stock_total",
+			Help: "Number of products that are out of stock",
+		},
+	)
+
+	lowStockProducts := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "product_service_low_stock_total",
+			Help: "Number of products with low stock (stock <= 10)",
+		},
+	)
+
+	productsByCategory := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "product_service_products_by_category",
+			Help: "Number of products per category",
+		},
+		[]string{"category"},
+	)
+
+	productErrors := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "product_service_errors_total",
+			Help: "Total number of product operation errors",
+		},
+		[]string{"operation", "error_type"},
+	)
+
+	stockUpdates := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "product_service_stock_updates_total",
+			Help: "Total number of stock update operations",
+		},
+		[]string{"operation", "status"}, // operation: increase/decrease, status: success/failed
+	)
+
 	prometheus.MustRegister(requestCounter)
 	prometheus.MustRegister(requestLatency)
 	prometheus.MustRegister(requestSummary)
 	prometheus.MustRegister(totalProducts)
+	prometheus.MustRegister(outOfStockProducts)
+	prometheus.MustRegister(lowStockProducts)
+	prometheus.MustRegister(productsByCategory)
+	prometheus.MustRegister(productErrors)
+	prometheus.MustRegister(stockUpdates)
 
 	return &ProductHandler{
 		createHandler:      createHandler,
@@ -144,6 +195,11 @@ func newProductHandler(
 		requestLatency:     requestLatency,
 		requestSummary:     requestSummary,
 		totalProducts:      totalProducts,
+		outOfStockProducts: outOfStockProducts,
+		lowStockProducts:   lowStockProducts,
+		productsByCategory: productsByCategory,
+		productErrors:      productErrors,
+		stockUpdates:       stockUpdates,
 	}
 }
 
@@ -228,6 +284,7 @@ func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 	product, err := h.createHandler.Handle(cmd)
 	if err != nil {
 		logger.Logger.Error().Err(err).Msg("Failed to create product")
+		h.productErrors.WithLabelValues("create", "validation_error").Inc()
 		respondJSON(w, http.StatusBadRequest, Response{
 			Success: false,
 			Error:   err.Error(),
@@ -235,7 +292,7 @@ func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.updateProductsMetric()
+	h.updateBusinessMetrics()
 
 	respondJSON(w, http.StatusCreated, Response{
 		Success: true,
@@ -351,12 +408,15 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	product, err := h.updateHandler.Handle(cmd)
 	if err != nil {
 		logger.Logger.Error().Err(err).Msg("Failed to update product")
+		h.productErrors.WithLabelValues("update", "validation_error").Inc()
 		respondJSON(w, http.StatusBadRequest, Response{
 			Success: false,
 			Error:   err.Error(),
 		})
 		return
 	}
+
+	h.updateBusinessMetrics()
 
 	respondJSON(w, http.StatusOK, Response{
 		Success: true,
@@ -380,6 +440,7 @@ func (h *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	cmd := command.DeleteProductCommand{ID: uint(id)}
 	if err := h.deleteHandler.Handle(cmd); err != nil {
 		logger.Logger.Error().Err(err).Msg("Failed to delete product")
+		h.productErrors.WithLabelValues("delete", "not_found").Inc()
 		respondJSON(w, http.StatusBadRequest, Response{
 			Success: false,
 			Error:   err.Error(),
@@ -387,7 +448,7 @@ func (h *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.updateProductsMetric()
+	h.updateBusinessMetrics()
 
 	respondJSON(w, http.StatusOK, Response{
 		Success: true,
@@ -424,14 +485,29 @@ func (h *ProductHandler) UpdateStock(w http.ResponseWriter, r *http.Request) {
 		Stock:     req.Stock,
 	}
 
+	// Determine operation type (increase/decrease)
+	currentProduct, err := h.getProductHandler.Handle(query.GetProductQuery{ID: uint(id)})
+	operation := "set"
+	if err == nil {
+		if req.Stock > currentProduct.Stock {
+			operation = "increase"
+		} else if req.Stock < currentProduct.Stock {
+			operation = "decrease"
+		}
+	}
+
 	if err := h.updateStockHandler.Handle(cmd); err != nil {
 		logger.Logger.Error().Err(err).Msg("Failed to update stock")
+		h.stockUpdates.WithLabelValues(operation, "failed").Inc()
 		respondJSON(w, http.StatusBadRequest, Response{
 			Success: false,
 			Error:   err.Error(),
 		})
 		return
 	}
+
+	h.stockUpdates.WithLabelValues(operation, "success").Inc()
+	h.updateBusinessMetrics()
 
 	respondJSON(w, http.StatusOK, Response{
 		Success: true,
@@ -481,6 +557,49 @@ func (h *ProductHandler) updateProductsMetric() {
 	if err == nil {
 		h.totalProducts.Set(float64(count))
 	}
+}
+
+// updateBusinessMetrics updates all business-specific metrics
+func (h *ProductHandler) updateBusinessMetrics() {
+	// Get all products to calculate metrics
+	products, err := h.repo.FindAll(10000, 0)
+	if err != nil {
+		logger.Logger.Error().Err(err).Msg("Failed to fetch products for metrics")
+		return
+	}
+
+	var outOfStock, lowStock int64
+	categoryCount := make(map[string]int64)
+	const lowStockThreshold = 10
+
+	for _, product := range products {
+		// Count out of stock products
+		if product.Stock == 0 {
+			outOfStock++
+		}
+		
+		// Count low stock products
+		if product.Stock > 0 && product.Stock <= lowStockThreshold {
+			lowStock++
+		}
+
+		// Count products by category
+		if product.Category != "" {
+			categoryCount[product.Category]++
+		}
+	}
+
+	// Update gauges
+	h.outOfStockProducts.Set(float64(outOfStock))
+	h.lowStockProducts.Set(float64(lowStock))
+	
+	// Update category counts
+	for category, count := range categoryCount {
+		h.productsByCategory.WithLabelValues(category).Set(float64(count))
+	}
+	
+	// Update total products
+	h.totalProducts.Set(float64(len(products)))
 }
 
 // respondJSON sends a JSON response
