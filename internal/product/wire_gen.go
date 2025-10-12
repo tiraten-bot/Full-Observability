@@ -8,6 +8,7 @@ package product
 
 import (
 	"github.com/tair/full-observability/internal/product/delivery/http"
+	"github.com/tair/full-observability/internal/product/domain"
 	"github.com/tair/full-observability/internal/product/repository"
 	"github.com/tair/full-observability/internal/product/usecase/command"
 	"github.com/tair/full-observability/internal/product/usecase/query"
@@ -16,6 +17,7 @@ import (
 
 // Injectors from wire.go:
 
+// InitializeHTTPHandler initializes HTTP handler with all dependencies
 func InitializeHTTPHandler(db *gorm.DB) (*http.ProductHandler, error) {
 	productRepository := ProvideProductRepository(db)
 	createProductHandler := ProvideCreateProductHandler(productRepository)
@@ -40,35 +42,43 @@ func InitializeHTTPHandler(db *gorm.DB) (*http.ProductHandler, error) {
 
 // wire.go:
 
-func ProvideProductRepository(db *gorm.DB) repository.GormProductRepository {
-	return *repository.NewGormProductRepository(db)
+// ProvideProductRepository provides the product repository
+func ProvideProductRepository(db *gorm.DB) domain.ProductRepository {
+	return repository.NewGormProductRepository(db)
 }
 
-func ProvideCreateProductHandler(repo repository.GormProductRepository) *command.CreateProductHandler {
-	return command.NewCreateProductHandler(&repo)
+// ProvideCreateProductHandler provides create product handler
+func ProvideCreateProductHandler(repo domain.ProductRepository) *command.CreateProductHandler {
+	return command.NewCreateProductHandler(repo)
 }
 
-func ProvideUpdateProductHandler(repo repository.GormProductRepository) *command.UpdateProductHandler {
-	return command.NewUpdateProductHandler(&repo)
+// ProvideUpdateProductHandler provides update product handler
+func ProvideUpdateProductHandler(repo domain.ProductRepository) *command.UpdateProductHandler {
+	return command.NewUpdateProductHandler(repo)
 }
 
-func ProvideDeleteProductHandler(repo repository.GormProductRepository) *command.DeleteProductHandler {
-	return command.NewDeleteProductHandler(&repo)
+// ProvideDeleteProductHandler provides delete product handler
+func ProvideDeleteProductHandler(repo domain.ProductRepository) *command.DeleteProductHandler {
+	return command.NewDeleteProductHandler(repo)
 }
 
-func ProvideUpdateStockHandler(repo repository.GormProductRepository) *command.UpdateStockHandler {
-	return command.NewUpdateStockHandler(&repo)
+// ProvideUpdateStockHandler provides update stock handler
+func ProvideUpdateStockHandler(repo domain.ProductRepository) *command.UpdateStockHandler {
+	return command.NewUpdateStockHandler(repo)
 }
 
-func ProvideGetProductHandler(repo repository.GormProductRepository) *query.GetProductHandler {
-	return query.NewGetProductHandler(&repo)
+// ProvideGetProductHandler provides get product handler
+func ProvideGetProductHandler(repo domain.ProductRepository) *query.GetProductHandler {
+	return query.NewGetProductHandler(repo)
 }
 
-func ProvideListProductsHandler(repo repository.GormProductRepository) *query.ListProductsHandler {
-	return query.NewListProductsHandler(&repo)
+// ProvideListProductsHandler provides list products handler
+func ProvideListProductsHandler(repo domain.ProductRepository) *query.ListProductsHandler {
+	return query.NewListProductsHandler(repo)
 }
 
-func ProvideGetStatsHandler(repo repository.GormProductRepository) *query.GetStatsHandler {
-	return query.NewGetStatsHandler(&repo)
+// ProvideGetStatsHandler provides get stats handler
+func ProvideGetStatsHandler(repo domain.ProductRepository) *query.GetStatsHandler {
+	return query.NewGetStatsHandler(repo)
 }
 

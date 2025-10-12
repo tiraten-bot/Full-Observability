@@ -9,6 +9,7 @@ package user
 import (
 	"github.com/tair/full-observability/internal/user/delivery/grpc"
 	"github.com/tair/full-observability/internal/user/delivery/http"
+	"github.com/tair/full-observability/internal/user/domain"
 	"github.com/tair/full-observability/internal/user/repository"
 	"github.com/tair/full-observability/internal/user/usecase/command"
 	"github.com/tair/full-observability/internal/user/usecase/query"
@@ -17,6 +18,7 @@ import (
 
 // Injectors from wire.go:
 
+// InitializeHTTPHandler initializes HTTP handler with all dependencies
 func InitializeHTTPHandler(db *gorm.DB) (*http.UserHandler, error) {
 	userRepository := ProvideUserRepository(db)
 	registerUserHandler := ProvideRegisterUserHandler(userRepository)
@@ -43,6 +45,7 @@ func InitializeHTTPHandler(db *gorm.DB) (*http.UserHandler, error) {
 	return userHandler, nil
 }
 
+// InitializeGRPCServer initializes gRPC server with all dependencies
 func InitializeGRPCServer(db *gorm.DB) (*grpc.UserServer, error) {
 	userRepository := ProvideUserRepository(db)
 	registerUserHandler := ProvideRegisterUserHandler(userRepository)
@@ -70,43 +73,53 @@ func InitializeGRPCServer(db *gorm.DB) (*grpc.UserServer, error) {
 
 // wire.go:
 
-func ProvideUserRepository(db *gorm.DB) repository.GormUserRepository {
-	return *repository.NewGormUserRepository(db)
+// ProvideUserRepository provides the user repository
+func ProvideUserRepository(db *gorm.DB) domain.UserRepository {
+	return repository.NewGormUserRepository(db)
 }
 
-func ProvideRegisterUserHandler(repo repository.GormUserRepository) *command.RegisterUserHandler {
-	return command.NewRegisterUserHandler(&repo)
+// ProvideRegisterUserHandler provides register user handler
+func ProvideRegisterUserHandler(repo domain.UserRepository) *command.RegisterUserHandler {
+	return command.NewRegisterUserHandler(repo)
 }
 
-func ProvideLoginUserHandler(repo repository.GormUserRepository) *command.LoginUserHandler {
-	return command.NewLoginUserHandler(&repo)
+// ProvideLoginUserHandler provides login user handler
+func ProvideLoginUserHandler(repo domain.UserRepository) *command.LoginUserHandler {
+	return command.NewLoginUserHandler(repo)
 }
 
-func ProvideUpdateUserHandler(repo repository.GormUserRepository) *command.UpdateUserHandler {
-	return command.NewUpdateUserHandler(&repo)
+// ProvideUpdateUserHandler provides update user handler
+func ProvideUpdateUserHandler(repo domain.UserRepository) *command.UpdateUserHandler {
+	return command.NewUpdateUserHandler(repo)
 }
 
-func ProvideDeleteUserHandler(repo repository.GormUserRepository) *command.DeleteUserHandler {
-	return command.NewDeleteUserHandler(&repo)
+// ProvideDeleteUserHandler provides delete user handler
+func ProvideDeleteUserHandler(repo domain.UserRepository) *command.DeleteUserHandler {
+	return command.NewDeleteUserHandler(repo)
 }
 
-func ProvideChangeRoleHandler(repo repository.GormUserRepository) *command.ChangeRoleHandler {
-	return command.NewChangeRoleHandler(&repo)
+// ProvideChangeRoleHandler provides change role handler
+func ProvideChangeRoleHandler(repo domain.UserRepository) *command.ChangeRoleHandler {
+	return command.NewChangeRoleHandler(repo)
 }
 
-func ProvideToggleActiveHandler(repo repository.GormUserRepository) *command.ToggleActiveHandler {
-	return command.NewToggleActiveHandler(&repo)
+// ProvideToggleActiveHandler provides toggle active handler
+func ProvideToggleActiveHandler(repo domain.UserRepository) *command.ToggleActiveHandler {
+	return command.NewToggleActiveHandler(repo)
 }
 
-func ProvideGetUserHandler(repo repository.GormUserRepository) *query.GetUserHandler {
-	return query.NewGetUserHandler(&repo)
+// ProvideGetUserHandler provides get user handler
+func ProvideGetUserHandler(repo domain.UserRepository) *query.GetUserHandler {
+	return query.NewGetUserHandler(repo)
 }
 
-func ProvideListUsersHandler(repo repository.GormUserRepository) *query.ListUsersHandler {
-	return query.NewListUsersHandler(&repo)
+// ProvideListUsersHandler provides list users handler
+func ProvideListUsersHandler(repo domain.UserRepository) *query.ListUsersHandler {
+	return query.NewListUsersHandler(repo)
 }
 
-func ProvideGetStatsHandler(repo repository.GormUserRepository) *query.GetStatsHandler {
-	return query.NewGetStatsHandler(&repo)
+// ProvideGetStatsHandler provides get stats handler
+func ProvideGetStatsHandler(repo domain.UserRepository) *query.GetStatsHandler {
+	return query.NewGetStatsHandler(repo)
 }
 
