@@ -9,6 +9,8 @@ help:
 	@echo "  clean          - Clean generated files"
 	@echo "  docker-up      - Start docker containers"
 	@echo "  docker-down    - Stop docker containers"
+	@echo "  run-user       - Run user service locally"
+	@echo "  run-product    - Run product service locally"
 
 # Install protoc plugins
 proto-install:
@@ -44,7 +46,10 @@ docker-up:
 docker-down:
 	docker-compose down
 
-# Run the service locally
-run:
+# Run services locally
+run-user:
 	go run cmd/user/main.go
+
+run-product:
+	go run cmd/product/main.go
 

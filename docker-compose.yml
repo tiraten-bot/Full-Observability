@@ -4,15 +4,16 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: userdb
+    container_name: postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: userdb
+      POSTGRES_DB: postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     networks:
       - observability-network
     healthcheck:
@@ -53,6 +54,36 @@ services:
       - observability-network
     restart: unless-stopped
 
+  # Product Service
+  product-service:
+    build:
+      context: .
+      dockerfile: dockerfiles/product.Dockerfile
+    container_name: product-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: productdb
+      DB_SSLMODE: disable
+      HTTP_PORT: 8081
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: product-service
+      ENVIRONMENT: production
+      LOG_LEVEL: info
+    ports:
+      - "8081:8081"  # HTTP
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    networks:
+      - observability-network
+    restart: unless-stopped
+
   # Prometheus
   prometheus:
     image: prom/prometheus:latest
@@ -67,7 +98,7 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle'
     ports:
-      - "9090:9090"
+      - "9091:9090"
     networks:
       - observability-network
     restart: unless-stopped

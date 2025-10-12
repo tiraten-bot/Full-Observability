@@ -1,18 +1,51 @@
+# Full Observability Microservices
+
+Bu proje, Go ile yazılmış mikroservis mimarisi ve tam observability (gözlemlenebilirlik) özelliklerini içerir.
+
+## Servisler
+
+### 1. User Service (Port: 8080, 9090)
+- Kullanıcı yönetimi (CRUD)
+- gRPC ve HTTP desteği
+- CQRS pattern
+- JWT authentication
+
+### 2. Product Service (Port: 8081)
+- Ürün yönetimi (CRUD)
+- Stok yönetimi
+- Kategori bazlı filtreleme
+- REST API
+
+## Observability Stack
+
+- **Prometheus** (Port: 9091) - Metrics toplama
+- **Grafana** (Port: 3000) - Görselleştirme (admin/admin)
+- **Jaeger** (Port: 16686) - Distributed tracing
+- **PostgreSQL** (Port: 5432) - Veritabanı
+
 ```mermaid
 graph TB
     subgraph "Docker Containers"
-        US[User Service<br/>:8080]
+        US[User Service<br/>:8080, :9090]
+        PS[Product Service<br/>:8081]
         PG[(PostgreSQL<br/>:5432)]
-        PR[Prometheus<br/>:9090]
+        PR[Prometheus<br/>:9091]
         GR[Grafana<br/>:3000]
+        JG[Jaeger<br/>:16686]
     end
     
-    US -->|SQL Query| PG
+    US -->|userdb| PG
+    PS -->|productdb| PG
     PR -->|Scrape /metrics<br/>every 10s| US
+    PR -->|Scrape /metrics<br/>every 10s| PS
     GR -->|PromQL Query| PR
+    US -->|Traces| JG
+    PS -->|Traces| JG
     
-    Client([Client]) -->|HTTP Request| US
+    Client([Client]) -->|HTTP/gRPC| US
+    Client -->|HTTP| PS
     Admin([Admin]) -->|View Dashboard| GR
+    Admin -->|View Traces| JG
 ```
 
 ```mermaid
@@ -45,21 +78,70 @@ sequenceDiagram
     H-->>P: Prometheus Format Data
 ```
 
+## Hızlı Başlangıç
+
+### Tüm servisleri çalıştır
+```bash
+make docker-up
+```
+
+### Servisleri test et
+```bash
+# Product API test
+./scripts/test-product-api.sh
+```
+
+### Servisleri durdur
+```bash
+make docker-down
+```
+
+### Yerel geliştirme
+```bash
+# User service
+make run-user
+
+# Product service
+make run-product
+```
+
+## Endpoints
+
+### User Service
+- HTTP: http://localhost:8080
+- gRPC: localhost:9090
+- Swagger: http://localhost:8080/swagger/
+
+### Product Service
+- HTTP: http://localhost:8081
+- Health: http://localhost:8081/health
+
+### Monitoring
+- Prometheus: http://localhost:9091
+- Grafana: http://localhost:3000 (admin/admin)
+- Jaeger: http://localhost:16686
+
 ```mermaid
 graph LR
     subgraph "Project Structure"
         direction TB
-        A[cmd/user/main.go]
-        B[internal/user/]
-        C[pkg/database/]
+        A[cmd/]
+        B[internal/]
+        C[pkg/]
         D[prometheus/]
         E[grafana/]
         F[dockerfiles/]
         
-        B --> B1[handler.go<br/>Metrics]
-        B --> B2[service.go<br/>Business Logic]
-        B --> B3[repository.go<br/>Database]
-        B --> B4[model.go<br/>Structs]
+        A --> A1[user/main.go]
+        A --> A2[product/main.go]
+        
+        B --> B1[user/<br/>CQRS Pattern]
+        B --> B2[product/<br/>Simple CRUD]
+        
+        C --> C1[database/]
+        C --> C2[logger/]
+        C --> C3[tracing/]
+        C --> C4[auth/]
     end
 ```
 

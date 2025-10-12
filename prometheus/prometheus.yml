@@ -33,3 +33,13 @@ scrape_configs:
           environment: 'development'
     metrics_path: '/metrics'
 
+  # Product Service
+  - job_name: 'product-service'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['product-service:8081']
+        labels:
+          service: 'product-service'
+          environment: 'development'
+    metrics_path: '/metrics'
+
