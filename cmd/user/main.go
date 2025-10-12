@@ -87,7 +87,7 @@ func main() {
 
 	// Start HTTP server in a goroutine
 	httpPort := getEnv("HTTP_PORT", "8080")
-	go startHTTPServer(repo, httpPort)
+	go startHTTPServer(repo, sqlDB, httpPort)
 
 	// Start gRPC server in a goroutine
 	grpcPort := getEnv("GRPC_PORT", "9090")
@@ -101,7 +101,7 @@ func main() {
 	logger.Logger.Info().Msg("Shutting down servers...")
 }
 
-func startHTTPServer(repo *repository.GormUserRepository, port string) {
+func startHTTPServer(repo *repository.GormUserRepository, db *sql.DB, port string) {
 	// Initialize HTTP handler
 	handler := httpDelivery.NewUserHandler(repo)
 
@@ -115,6 +115,9 @@ func startHTTPServer(repo *repository.GormUserRepository, port string) {
 	})
 
 	handler.RegisterRoutes(router)
+	
+	// Health check endpoint
+	handler.RegisterHealthCheck(router, db)
 
 	// Prometheus metrics endpoint
 	router.Handle("/metrics", promhttp.Handler())

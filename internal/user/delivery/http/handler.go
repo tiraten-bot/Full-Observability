@@ -1,6 +1,8 @@
 package http
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -443,8 +445,22 @@ func (h *UserHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 }
 
 // HealthCheck handles GET /health
-func (h *UserHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	h.respondJSON(w, http.StatusOK, map[string]string{"status": "healthy"})
+func (h *UserHandler) HealthCheck(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		// Check database connectivity
+		if err := db.PingContext(ctx); err != nil {
+			h.respondJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"status": "unhealthy",
+				"error":  err.Error(),
+			})
+			return
+		}
+
+		h.respondJSON(w, http.StatusOK, map[string]string{"status": "healthy"})
+	}
 }
 
 // updateActiveUsersMetric updates the active users gauge
@@ -472,7 +488,6 @@ func (h *UserHandler) RegisterRoutes(router *mux.Router) {
 	// Public routes
 	router.HandleFunc("/auth/register", h.metricsMiddleware("/auth/register", h.Register)).Methods("POST")
 	router.HandleFunc("/auth/login", h.metricsMiddleware("/auth/login", h.Login)).Methods("POST")
-	router.HandleFunc("/health", h.metricsMiddleware("/health", h.HealthCheck)).Methods("GET")
 
 	// Authenticated user routes
 	router.HandleFunc("/users/me", h.metricsMiddleware("/users/me", AuthMiddleware(h.GetProfile))).Methods("GET")
@@ -487,4 +502,9 @@ func (h *UserHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/admin/users/{id}/role", h.metricsMiddleware("/admin/users/{id}/role", AdminMiddleware(h.ChangeRole))).Methods("PUT")
 	router.HandleFunc("/admin/users/{id}/active", h.metricsMiddleware("/admin/users/{id}/active", AdminMiddleware(h.ToggleActive))).Methods("PUT")
 	router.HandleFunc("/admin/stats", h.metricsMiddleware("/admin/stats", AdminMiddleware(h.GetStats))).Methods("GET")
+}
+
+// RegisterHealthCheck registers health check endpoint
+func (h *UserHandler) RegisterHealthCheck(router *mux.Router, db *sql.DB) {
+	router.HandleFunc("/health", h.HealthCheck(db)).Methods("GET")
 }
