@@ -36,7 +36,7 @@ type UserHandler struct {
 	activeUsers    prometheus.Gauge
 }
 
-// NewUserHandler creates a new user handler
+// NewUserHandler creates a new user handler (manual DI for backwards compatibility)
 func NewUserHandler(repo domain.UserRepository) *UserHandler {
 	// Initialize command handlers
 	registerHandler := command.NewRegisterUserHandler(repo)
@@ -51,6 +51,49 @@ func NewUserHandler(repo domain.UserRepository) *UserHandler {
 	listHandler := query.NewListUsersHandler(repo)
 	statsHandler := query.NewGetStatsHandler(repo)
 
+	return newUserHandler(
+		registerHandler, loginHandler, updateHandler, deleteHandler,
+		changeRoleHandler, toggleActiveHandler,
+		getUserHandler, listHandler, statsHandler,
+		repo,
+	)
+}
+
+// NewUserHandlerWithDI creates a new user handler using dependency injection
+// This is used by Wire for automatic dependency injection
+func NewUserHandlerWithDI(
+	registerHandler *command.RegisterUserHandler,
+	loginHandler *command.LoginUserHandler,
+	updateHandler *command.UpdateUserHandler,
+	deleteHandler *command.DeleteUserHandler,
+	changeRoleHandler *command.ChangeRoleHandler,
+	toggleActiveHandler *command.ToggleActiveHandler,
+	getUserHandler *query.GetUserHandler,
+	listHandler *query.ListUsersHandler,
+	statsHandler *query.GetStatsHandler,
+	repo domain.UserRepository,
+) *UserHandler {
+	return newUserHandler(
+		registerHandler, loginHandler, updateHandler, deleteHandler,
+		changeRoleHandler, toggleActiveHandler,
+		getUserHandler, listHandler, statsHandler,
+		repo,
+	)
+}
+
+// newUserHandler is the internal constructor used by both manual and Wire DI
+func newUserHandler(
+	registerHandler *command.RegisterUserHandler,
+	loginHandler *command.LoginUserHandler,
+	updateHandler *command.UpdateUserHandler,
+	deleteHandler *command.DeleteUserHandler,
+	changeRoleHandler *command.ChangeRoleHandler,
+	toggleActiveHandler *command.ToggleActiveHandler,
+	getUserHandler *query.GetUserHandler,
+	listHandler *query.ListUsersHandler,
+	statsHandler *query.GetStatsHandler,
+	repo domain.UserRepository,
+) *UserHandler {
 	// Initialize Prometheus metrics
 	requestCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{

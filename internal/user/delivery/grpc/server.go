@@ -31,7 +31,7 @@ type UserServer struct {
 	statsHandler   *query.GetStatsHandler
 }
 
-// NewUserServer creates a new gRPC user server
+// NewUserServer creates a new gRPC user server (manual DI for backwards compatibility)
 func NewUserServer(repo domain.UserRepository) *UserServer {
 	return &UserServer{
 		registerHandler:     command.NewRegisterUserHandler(repo),
@@ -43,6 +43,32 @@ func NewUserServer(repo domain.UserRepository) *UserServer {
 		getUserHandler:      query.NewGetUserHandler(repo),
 		listHandler:         query.NewListUsersHandler(repo),
 		statsHandler:        query.NewGetStatsHandler(repo),
+	}
+}
+
+// NewUserServerWithDI creates a new gRPC user server using dependency injection
+// This is used by Wire for automatic dependency injection
+func NewUserServerWithDI(
+	registerHandler *command.RegisterUserHandler,
+	loginHandler *command.LoginUserHandler,
+	updateHandler *command.UpdateUserHandler,
+	deleteHandler *command.DeleteUserHandler,
+	changeRoleHandler *command.ChangeRoleHandler,
+	toggleActiveHandler *command.ToggleActiveHandler,
+	getUserHandler *query.GetUserHandler,
+	listHandler *query.ListUsersHandler,
+	statsHandler *query.GetStatsHandler,
+) *UserServer {
+	return &UserServer{
+		registerHandler:     registerHandler,
+		loginHandler:        loginHandler,
+		updateHandler:       updateHandler,
+		deleteHandler:       deleteHandler,
+		changeRoleHandler:   changeRoleHandler,
+		toggleActiveHandler: toggleActiveHandler,
+		getUserHandler:      getUserHandler,
+		listHandler:         listHandler,
+		statsHandler:        statsHandler,
 	}
 }
 
