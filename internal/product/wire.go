@@ -7,6 +7,7 @@ import (
 	"github.com/google/wire"
 	"gorm.io/gorm"
 
+	"github.com/tair/full-observability/internal/product/client"
 	"github.com/tair/full-observability/internal/product/delivery/grpc"
 	"github.com/tair/full-observability/internal/product/delivery/http"
 	"github.com/tair/full-observability/internal/product/domain"
@@ -48,6 +49,11 @@ func ProvideListProductsHandler(repo domain.ProductRepository) *query.ListProduc
 
 func ProvideGetStatsHandler(repo domain.ProductRepository) *query.GetStatsHandler {
 	return query.NewGetStatsHandler(repo)
+}
+
+// ProvideUserServiceClient provides the user service gRPC client
+func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
+	return client.NewUserServiceClient(userServiceAddr)
 }
 
 // CommandHandlers is a struct that holds all command handlers
@@ -120,9 +126,10 @@ var AllHandlersSet = wire.NewSet(
 )
 
 // InitializeHTTPHandler initializes HTTP handler with all dependencies
-func InitializeHTTPHandler(db *gorm.DB) (*http.ProductHandler, error) {
+func InitializeHTTPHandler(db *gorm.DB, userServiceAddr string) (*http.ProductHandler, error) {
 	wire.Build(
 		AllHandlersSet,
+		ProvideUserServiceClient,
 		http.NewProductHandlerWithDI,
 	)
 	return nil, nil

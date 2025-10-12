@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/tair/full-observability/internal/product/client"
 	"github.com/tair/full-observability/internal/product/domain"
 	"github.com/tair/full-observability/internal/product/usecase/command"
 	"github.com/tair/full-observability/internal/product/usecase/query"
@@ -29,6 +30,7 @@ type ProductHandler struct {
 	statsHandler       *query.GetStatsHandler
 
 	repo           domain.ProductRepository
+	userClient     *client.UserServiceClient
 	requestCounter *prometheus.CounterVec
 	requestLatency *prometheus.HistogramVec
 	requestSummary *prometheus.SummaryVec
@@ -43,7 +45,7 @@ type ProductHandler struct {
 }
 
 // NewProductHandler creates a new product handler with CQRS pattern (manual DI for backwards compatibility)
-func NewProductHandler(repo domain.ProductRepository) *ProductHandler {
+func NewProductHandler(repo domain.ProductRepository, userClient *client.UserServiceClient) *ProductHandler {
 	// Initialize command handlers
 	createHandler := command.NewCreateProductHandler(repo)
 	updateHandler := command.NewUpdateProductHandler(repo)
@@ -58,7 +60,7 @@ func NewProductHandler(repo domain.ProductRepository) *ProductHandler {
 	return newProductHandler(
 		createHandler, updateHandler, deleteHandler, updateStockHandler,
 		getProductHandler, listHandler, statsHandler,
-		repo,
+		repo, userClient,
 	)
 }
 
@@ -73,11 +75,12 @@ func NewProductHandlerWithDI(
 	listHandler *query.ListProductsHandler,
 	statsHandler *query.GetStatsHandler,
 	repo domain.ProductRepository,
+	userClient *client.UserServiceClient,
 ) *ProductHandler {
 	return newProductHandler(
 		createHandler, updateHandler, deleteHandler, updateStockHandler,
 		getProductHandler, listHandler, statsHandler,
-		repo,
+		repo, userClient,
 	)
 }
 
@@ -91,6 +94,7 @@ func newProductHandler(
 	listHandler *query.ListProductsHandler,
 	statsHandler *query.GetStatsHandler,
 	repo domain.ProductRepository,
+	userClient *client.UserServiceClient,
 ) *ProductHandler {
 	// Initialize Prometheus metrics
 	requestCounter := prometheus.NewCounterVec(
@@ -191,6 +195,7 @@ func newProductHandler(
 		listHandler:        listHandler,
 		statsHandler:       statsHandler,
 		repo:               repo,
+		userClient:         userClient,
 		requestCounter:     requestCounter,
 		requestLatency:     requestLatency,
 		requestSummary:     requestSummary,
@@ -244,11 +249,11 @@ func (h *ProductHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/products/stats", h.metricsMiddleware("/api/products/stats", h.GetStats)).Methods("GET")
 	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", h.GetProduct)).Methods("GET")
 
-	// Admin routes (admin role required)
-	router.HandleFunc("/api/products", h.metricsMiddleware("/api/products", AdminMiddleware(h.CreateProduct))).Methods("POST")
-	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", AdminMiddleware(h.UpdateProduct))).Methods("PUT")
-	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", AdminMiddleware(h.DeleteProduct))).Methods("DELETE")
-	router.HandleFunc("/api/products/{id}/stock", h.metricsMiddleware("/api/products/{id}/stock", AdminMiddleware(h.UpdateStock))).Methods("PATCH")
+	// Admin routes (admin role required via gRPC verification)
+	router.HandleFunc("/api/products", h.metricsMiddleware("/api/products", AdminMiddleware(h.userClient)(h.CreateProduct))).Methods("POST")
+	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", AdminMiddleware(h.userClient)(h.UpdateProduct))).Methods("PUT")
+	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", AdminMiddleware(h.userClient)(h.DeleteProduct))).Methods("DELETE")
+	router.HandleFunc("/api/products/{id}/stock", h.metricsMiddleware("/api/products/{id}/stock", AdminMiddleware(h.userClient)(h.UpdateStock))).Methods("PATCH")
 }
 
 // CreateProduct handles POST /api/products

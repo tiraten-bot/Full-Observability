@@ -8,6 +8,7 @@ package product
 
 import (
 	"github.com/google/wire"
+	"github.com/tair/full-observability/internal/product/client"
 	"github.com/tair/full-observability/internal/product/delivery/grpc"
 	"github.com/tair/full-observability/internal/product/delivery/http"
 	"github.com/tair/full-observability/internal/product/domain"
@@ -20,7 +21,7 @@ import (
 // Injectors from wire.go:
 
 // InitializeHTTPHandler initializes HTTP handler with all dependencies
-func InitializeHTTPHandler(db *gorm.DB) (*http.ProductHandler, error) {
+func InitializeHTTPHandler(db *gorm.DB, userServiceAddr string) (*http.ProductHandler, error) {
 	productRepository := ProvideProductRepository(db)
 	createProductHandler := ProvideCreateProductHandler(productRepository)
 	updateProductHandler := ProvideUpdateProductHandler(productRepository)
@@ -29,7 +30,11 @@ func InitializeHTTPHandler(db *gorm.DB) (*http.ProductHandler, error) {
 	getProductHandler := ProvideGetProductHandler(productRepository)
 	listProductsHandler := ProvideListProductsHandler(productRepository)
 	getStatsHandler := ProvideGetStatsHandler(productRepository)
-	productHandler := http.NewProductHandlerWithDI(createProductHandler, updateProductHandler, deleteProductHandler, updateStockHandler, getProductHandler, listProductsHandler, getStatsHandler, productRepository)
+	userServiceClient, err := ProvideUserServiceClient(userServiceAddr)
+	if err != nil {
+		return nil, err
+	}
+	productHandler := http.NewProductHandlerWithDI(createProductHandler, updateProductHandler, deleteProductHandler, updateStockHandler, getProductHandler, listProductsHandler, getStatsHandler, productRepository, userServiceClient)
 	return productHandler, nil
 }
 
@@ -82,6 +87,11 @@ func ProvideListProductsHandler(repo domain.ProductRepository) *query.ListProduc
 
 func ProvideGetStatsHandler(repo domain.ProductRepository) *query.GetStatsHandler {
 	return query.NewGetStatsHandler(repo)
+}
+
+// ProvideUserServiceClient provides the user service gRPC client
+func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
+	return client.NewUserServiceClient(userServiceAddr)
 }
 
 // CommandHandlers is a struct that holds all command handlers

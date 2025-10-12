@@ -20,8 +20,10 @@ import (
 
 	pb "github.com/tair/full-observability/api/proto/product"
 	_ "github.com/tair/full-observability/cmd/product/docs"
+	"github.com/tair/full-observability/internal/product"
 	grpcDelivery "github.com/tair/full-observability/internal/product/delivery/grpc"
 	httpDelivery "github.com/tair/full-observability/internal/product/delivery/http"
+	"github.com/tair/full-observability/internal/product/domain"
 	"github.com/tair/full-observability/internal/product/repository"
 	"github.com/tair/full-observability/pkg/database"
 	"github.com/tair/full-observability/pkg/logger"
@@ -81,9 +83,8 @@ func main() {
 	}
 	defer sqlDB.Close()
 
-	// Initialize repository
-	repo := repository.NewGormProductRepository(db)
-	if err := repo.AutoMigrate(); err != nil {
+	// Run migrations
+	if err := db.AutoMigrate(&domain.Product{}); err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to run migrations")
 	}
 
@@ -92,9 +93,25 @@ func main() {
 	// Register database pool metrics
 	registerDBPoolMetrics(sqlDB)
 
+	// Get User Service gRPC address
+	userServiceAddr := getEnv("USER_SERVICE_GRPC_ADDR", "localhost:9090")
+
+	// Initialize HTTP handler with Wire DI (includes User Service gRPC client)
+	httpHandler, err := product.InitializeHTTPHandler(db, userServiceAddr)
+	if err != nil {
+		logger.Logger.Fatal().Err(err).Msg("Failed to initialize HTTP handler")
+	}
+
+	logger.Logger.Info().
+		Str("user_service_grpc", userServiceAddr).
+		Msg("Product HTTP handler initialized with User Service client")
+
+	// Initialize gRPC server with Wire DI
+	repo := repository.NewGormProductRepository(db)
+
 	// Start HTTP server in a goroutine
 	httpPort := getEnv("HTTP_PORT", "8081")
-	go startHTTPServer(repo, sqlDB, httpPort)
+	go startHTTPServer(httpHandler, sqlDB, httpPort)
 
 	// Start gRPC server in a goroutine
 	grpcPort := getEnv("GRPC_PORT", "9091")
@@ -108,10 +125,7 @@ func main() {
 	logger.Logger.Info().Msg("Shutting down servers...")
 }
 
-func startHTTPServer(repo *repository.GormProductRepository, db *sql.DB, port string) {
-	// Initialize HTTP handler
-	handler := httpDelivery.NewProductHandler(repo)
-
+func startHTTPServer(handler *httpDelivery.ProductHandler, db *sql.DB, port string) {
 	// Setup router
 	router := mux.NewRouter()
 
