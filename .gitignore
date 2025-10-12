@@ -43,3 +43,8 @@ grafana_data/
 
 # Generated proto files (optional - can be committed)
 # api/proto/**/*.pb.go
+
+# Generated swagger docs (will be regenerated)
+# cmd/user/docs/docs.go
+# cmd/user/docs/swagger.json
+# cmd/user/docs/swagger.yaml

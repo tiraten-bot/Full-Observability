@@ -12,10 +12,12 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
 	pb "github.com/tair/full-observability/api/proto/user"
+	_ "github.com/tair/full-observability/cmd/user/docs"
 	grpcDelivery "github.com/tair/full-observability/internal/user/delivery/grpc"
 	httpDelivery "github.com/tair/full-observability/internal/user/delivery/http"
 	"github.com/tair/full-observability/internal/user/repository"
@@ -118,6 +120,9 @@ func startHTTPServer(repo *repository.GormUserRepository, db *sql.DB, port strin
 	
 	// Health check endpoint
 	handler.RegisterHealthCheck(router, db)
+
+	// Swagger documentation
+	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
 	// Prometheus metrics endpoint
 	router.Handle("/metrics", promhttp.Handler())

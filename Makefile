@@ -1,10 +1,11 @@
-.PHONY: proto proto-install clean help
+.PHONY: proto proto-install swagger clean help
 
 # Help target
 help:
 	@echo "Available targets:"
 	@echo "  proto-install  - Install protoc and Go plugins"
 	@echo "  proto          - Generate Go code from proto files"
+	@echo "  swagger        - Generate Swagger documentation"
 	@echo "  clean          - Clean generated files"
 	@echo "  docker-up      - Start docker containers"
 	@echo "  docker-down    - Stop docker containers"
@@ -23,6 +24,13 @@ proto:
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		api/proto/user/user.proto
 	@echo "Proto generation complete!"
+
+# Generate Swagger documentation
+swagger:
+	@echo "Generating Swagger documentation..."
+	@which swag || (echo "Installing swag..." && go install github.com/swaggo/swag/cmd/swag@latest)
+	swag init -g cmd/user/docs.go -o cmd/user/docs --parseDependency --parseInternal
+	@echo "Swagger generation complete!"
 
 # Clean generated files
 clean:
