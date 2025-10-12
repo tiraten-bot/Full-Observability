@@ -11,6 +11,8 @@ import (
 	"github.com/tair/full-observability/internal/inventory/delivery/http"
 	"github.com/tair/full-observability/internal/inventory/domain"
 	"github.com/tair/full-observability/internal/inventory/repository"
+	"github.com/tair/full-observability/internal/inventory/usecase/command"
+	"github.com/tair/full-observability/internal/inventory/usecase/query"
 	"gorm.io/gorm"
 )
 
@@ -19,7 +21,12 @@ import (
 // InitializeHTTPHandler initializes HTTP handler with all dependencies
 func InitializeHTTPHandler(db *gorm.DB) (*http.InventoryHandler, error) {
 	inventoryRepository := ProvideInventoryRepository(db)
-	inventoryHandler := http.NewInventoryHandler(inventoryRepository)
+	createInventoryHandler := ProvideCreateInventoryHandler(inventoryRepository)
+	updateQuantityHandler := ProvideUpdateQuantityHandler(inventoryRepository)
+	deleteInventoryHandler := ProvideDeleteInventoryHandler(inventoryRepository)
+	getInventoryHandler := ProvideGetInventoryHandler(inventoryRepository)
+	listInventoryHandler := ProvideListInventoryHandler(inventoryRepository)
+	inventoryHandler := http.NewInventoryHandlerWithDI(createInventoryHandler, updateQuantityHandler, deleteInventoryHandler, getInventoryHandler, listInventoryHandler, inventoryRepository)
 	return inventoryHandler, nil
 }
 
@@ -30,7 +37,46 @@ func ProvideInventoryRepository(db *gorm.DB) domain.InventoryRepository {
 	return repository.NewGormInventoryRepository(db)
 }
 
+// Command Handlers Providers
+func ProvideCreateInventoryHandler(repo domain.InventoryRepository) *command.CreateInventoryHandler {
+	return command.NewCreateInventoryHandler(repo)
+}
+
+func ProvideUpdateQuantityHandler(repo domain.InventoryRepository) *command.UpdateQuantityHandler {
+	return command.NewUpdateQuantityHandler(repo)
+}
+
+func ProvideDeleteInventoryHandler(repo domain.InventoryRepository) *command.DeleteInventoryHandler {
+	return command.NewDeleteInventoryHandler(repo)
+}
+
+// Query Handlers Providers
+func ProvideGetInventoryHandler(repo domain.InventoryRepository) *query.GetInventoryHandler {
+	return query.NewGetInventoryHandler(repo)
+}
+
+func ProvideListInventoryHandler(repo domain.InventoryRepository) *query.ListInventoryHandler {
+	return query.NewListInventoryHandler(repo)
+}
+
 // Wire sets
 var RepositorySet = wire.NewSet(
 	ProvideInventoryRepository,
+)
+
+var CommandHandlerSet = wire.NewSet(
+	ProvideCreateInventoryHandler,
+	ProvideUpdateQuantityHandler,
+	ProvideDeleteInventoryHandler,
+)
+
+var QueryHandlerSet = wire.NewSet(
+	ProvideGetInventoryHandler,
+	ProvideListInventoryHandler,
+)
+
+var AllHandlersSet = wire.NewSet(
+	RepositorySet,
+	CommandHandlerSet,
+	QueryHandlerSet,
 )
