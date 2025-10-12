@@ -12,12 +12,12 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "url": "http://github.com/ozturkeniss/Full-Observability",
-            "email": "support@example.com"
+            "url": "http://www.swagger.io/support",
+            "email": "support@swagger.io"
         },
         "license": {
-            "name": "MIT",
-            "url": "https://github.com/ozturkeniss/Full-Observability/blob/main/LICENSE"
+            "name": "Apache 2.0",
+            "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
         },
         "version": "{{.Version}}"
     },
@@ -1560,35 +1560,17 @@ const docTemplate = `{
             "name": "Authorization",
             "in": "header"
         }
-    },
-    "tags": [
-        {
-            "description": "Authentication endpoints",
-            "name": "Auth"
-        },
-        {
-            "description": "User management endpoints",
-            "name": "Users"
-        },
-        {
-            "description": "Admin-only endpoints",
-            "name": "Admin"
-        },
-        {
-            "description": "Health check endpoints",
-            "name": "Health"
-        }
-    ]
+    }
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8080",
+	Host:             "localhost:8081",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "User Service API",
-	Description:      "Microservice for user management with full observability stack (Prometheus, Jaeger, Grafana)",
+	Title:            "Product Service API",
+	Description:      "This is a product service with full observability (logging, tracing, metrics)",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

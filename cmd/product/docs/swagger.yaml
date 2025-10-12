@@ -1,17 +1,17 @@
 basePath: /
-host: localhost:8080
+host: localhost:8081
 info:
   contact:
-    email: support@example.com
+    email: support@swagger.io
     name: API Support
-    url: http://github.com/ozturkeniss/Full-Observability
-  description: Microservice for user management with full observability stack (Prometheus,
-    Jaeger, Grafana)
+    url: http://www.swagger.io/support
+  description: This is a product service with full observability (logging, tracing,
+    metrics)
   license:
-    name: MIT
-    url: https://github.com/ozturkeniss/Full-Observability/blob/main/LICENSE
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
   termsOfService: http://swagger.io/terms/
-  title: User Service API
+  title: Product Service API
   version: "1.0"
 paths:
   /admin/stats:
@@ -992,12 +992,3 @@ securityDefinitions:
     name: Authorization
     type: apiKey
 swagger: "2.0"
-tags:
-- description: Authentication endpoints
-  name: Auth
-- description: User management endpoints
-  name: Users
-- description: Admin-only endpoints
-  name: Admin
-- description: Health check endpoints
-  name: Health

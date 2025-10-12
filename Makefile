@@ -33,7 +33,10 @@ proto:
 swagger:
 	@echo "Generating Swagger documentation..."
 	@which swag || (echo "Installing swag..." && go install github.com/swaggo/swag/cmd/swag@latest)
+	@echo "Generating User Service Swagger docs..."
 	swag init -g cmd/user/docs.go -o cmd/user/docs --parseDependency --parseInternal
+	@echo "Generating Product Service Swagger docs..."
+	swag init -g cmd/product/docs.go -o cmd/product/docs --parseDependency --parseInternal
 	@echo "Swagger generation complete!"
 
 # Install Wire
@@ -55,6 +58,8 @@ clean:
 	rm -f api/proto/user/*.pb.go
 	rm -f internal/user/wire_gen.go
 	rm -f internal/product/wire_gen.go
+	rm -rf cmd/user/docs/docs.go cmd/user/docs/swagger.json cmd/user/docs/swagger.yaml
+	rm -rf cmd/product/docs/docs.go cmd/product/docs/swagger.json cmd/product/docs/swagger.yaml
 
 # Docker commands
 docker-up:
