@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
@@ -87,6 +88,9 @@ func main() {
 	}
 
 	logger.Logger.Info().Msg("Database initialized successfully")
+
+	// Register database pool metrics
+	registerDBPoolMetrics(sqlDB)
 
 	// Start HTTP server in a goroutine
 	httpPort := getEnv("HTTP_PORT", "8080")
@@ -188,4 +192,108 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// registerDBPoolMetrics registers database connection pool metrics
+func registerDBPoolMetrics(sqlDB *sql.DB) {
+	// Create gauges for database pool stats
+	dbMaxOpenConns := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "user_service_db_max_open_connections",
+			Help: "Maximum number of open connections to the database",
+		},
+		func() float64 {
+			stats := sqlDB.Stats()
+			return float64(stats.MaxOpenConnections)
+		},
+	)
+
+	dbOpenConns := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "user_service_db_open_connections",
+			Help: "Number of established connections to the database",
+		},
+		func() float64 {
+			stats := sqlDB.Stats()
+			return float64(stats.OpenConnections)
+		},
+	)
+
+	dbInUseConns := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "user_service_db_in_use_connections",
+			Help: "Number of connections currently in use",
+		},
+		func() float64 {
+			stats := sqlDB.Stats()
+			return float64(stats.InUse)
+		},
+	)
+
+	dbIdleConns := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "user_service_db_idle_connections",
+			Help: "Number of idle connections in the pool",
+		},
+		func() float64 {
+			stats := sqlDB.Stats()
+			return float64(stats.Idle)
+		},
+	)
+
+	dbWaitCount := prometheus.NewCounterFunc(
+		prometheus.CounterOpts{
+			Name: "user_service_db_wait_count_total",
+			Help: "Total number of connections waited for",
+		},
+		func() float64 {
+			stats := sqlDB.Stats()
+			return float64(stats.WaitCount)
+		},
+	)
+
+	dbWaitDuration := prometheus.NewCounterFunc(
+		prometheus.CounterOpts{
+			Name: "user_service_db_wait_duration_seconds_total",
+			Help: "Total time blocked waiting for a new connection",
+		},
+		func() float64 {
+			stats := sqlDB.Stats()
+			return stats.WaitDuration.Seconds()
+		},
+	)
+
+	dbMaxIdleClosed := prometheus.NewCounterFunc(
+		prometheus.CounterOpts{
+			Name: "user_service_db_max_idle_closed_total",
+			Help: "Total number of connections closed due to SetMaxIdleConns",
+		},
+		func() float64 {
+			stats := sqlDB.Stats()
+			return float64(stats.MaxIdleClosed)
+		},
+	)
+
+	dbMaxLifetimeClosed := prometheus.NewCounterFunc(
+		prometheus.CounterOpts{
+			Name: "user_service_db_max_lifetime_closed_total",
+			Help: "Total number of connections closed due to SetConnMaxLifetime",
+		},
+		func() float64 {
+			stats := sqlDB.Stats()
+			return float64(stats.MaxLifetimeClosed)
+		},
+	)
+
+	// Register all metrics
+	prometheus.MustRegister(dbMaxOpenConns)
+	prometheus.MustRegister(dbOpenConns)
+	prometheus.MustRegister(dbInUseConns)
+	prometheus.MustRegister(dbIdleConns)
+	prometheus.MustRegister(dbWaitCount)
+	prometheus.MustRegister(dbWaitDuration)
+	prometheus.MustRegister(dbMaxIdleClosed)
+	prometheus.MustRegister(dbMaxLifetimeClosed)
+
+	logger.Logger.Info().Msg("Database pool metrics registered")
 }
