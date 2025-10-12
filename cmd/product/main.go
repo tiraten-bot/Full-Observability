@@ -101,7 +101,10 @@ func startHTTPServer(repo *repository.GormProductRepository, db *sql.DB, port st
 	router := mux.NewRouter()
 
 	// Add middlewares (order matters!)
-	router.Use(httpDelivery.LoggingMiddleware) // Logging middleware
+	router.Use(httpDelivery.LoggingMiddleware) // Logging first
+	router.Use(func(next http.Handler) http.Handler {
+		return httpDelivery.TracingMiddleware("http-request", next)
+	})
 
 	// Register routes
 	handler.RegisterRoutes(router)
