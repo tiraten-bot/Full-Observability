@@ -8,6 +8,7 @@ package inventory
 
 import (
 	"github.com/google/wire"
+	"github.com/tair/full-observability/internal/inventory/client"
 	"github.com/tair/full-observability/internal/inventory/delivery/http"
 	"github.com/tair/full-observability/internal/inventory/domain"
 	"github.com/tair/full-observability/internal/inventory/repository"
@@ -19,14 +20,18 @@ import (
 // Injectors from wire.go:
 
 // InitializeHTTPHandler initializes HTTP handler with all dependencies
-func InitializeHTTPHandler(db *gorm.DB) (*http.InventoryHandler, error) {
+func InitializeHTTPHandler(db *gorm.DB, userServiceAddr string) (*http.InventoryHandler, error) {
 	inventoryRepository := ProvideInventoryRepository(db)
 	createInventoryHandler := ProvideCreateInventoryHandler(inventoryRepository)
 	updateQuantityHandler := ProvideUpdateQuantityHandler(inventoryRepository)
 	deleteInventoryHandler := ProvideDeleteInventoryHandler(inventoryRepository)
 	getInventoryHandler := ProvideGetInventoryHandler(inventoryRepository)
 	listInventoryHandler := ProvideListInventoryHandler(inventoryRepository)
-	inventoryHandler := http.NewInventoryHandlerWithDI(createInventoryHandler, updateQuantityHandler, deleteInventoryHandler, getInventoryHandler, listInventoryHandler, inventoryRepository)
+	userServiceClient, err := ProvideUserServiceClient(userServiceAddr)
+	if err != nil {
+		return nil, err
+	}
+	inventoryHandler := http.NewInventoryHandlerWithDI(createInventoryHandler, updateQuantityHandler, deleteInventoryHandler, getInventoryHandler, listInventoryHandler, inventoryRepository, userServiceClient)
 	return inventoryHandler, nil
 }
 
@@ -57,6 +62,11 @@ func ProvideGetInventoryHandler(repo domain.InventoryRepository) *query.GetInven
 
 func ProvideListInventoryHandler(repo domain.InventoryRepository) *query.ListInventoryHandler {
 	return query.NewListInventoryHandler(repo)
+}
+
+// ProvideUserServiceClient provides the user service gRPC client
+func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
+	return client.NewUserServiceClient(userServiceAddr)
 }
 
 // Wire sets

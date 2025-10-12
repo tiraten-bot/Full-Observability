@@ -7,6 +7,7 @@ import (
 	"github.com/google/wire"
 	"gorm.io/gorm"
 
+	"github.com/tair/full-observability/internal/inventory/client"
 	"github.com/tair/full-observability/internal/inventory/delivery/http"
 	"github.com/tair/full-observability/internal/inventory/domain"
 	"github.com/tair/full-observability/internal/inventory/repository"
@@ -41,6 +42,11 @@ func ProvideListInventoryHandler(repo domain.InventoryRepository) *query.ListInv
 	return query.NewListInventoryHandler(repo)
 }
 
+// ProvideUserServiceClient provides the user service gRPC client
+func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
+	return client.NewUserServiceClient(userServiceAddr)
+}
+
 // Wire sets
 var RepositorySet = wire.NewSet(
 	ProvideInventoryRepository,
@@ -64,9 +70,10 @@ var AllHandlersSet = wire.NewSet(
 )
 
 // InitializeHTTPHandler initializes HTTP handler with all dependencies
-func InitializeHTTPHandler(db *gorm.DB) (*http.InventoryHandler, error) {
+func InitializeHTTPHandler(db *gorm.DB, userServiceAddr string) (*http.InventoryHandler, error) {
 	wire.Build(
 		AllHandlersSet,
+		ProvideUserServiceClient,
 		http.NewInventoryHandlerWithDI,
 	)
 	return nil, nil

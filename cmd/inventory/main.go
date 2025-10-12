@@ -60,13 +60,20 @@ func main() {
 		logger.Logger.Fatal().Err(err).Msg("Failed to run migrations")
 	}
 
-	// Initialize handler with Wire DI
-	handler, err := inventory.InitializeHTTPHandler(db)
+	logger.Logger.Info().Msg("Database initialized successfully")
+
+	// Get User Service gRPC address
+	userServiceAddr := getEnv("USER_SERVICE_GRPC_ADDR", "localhost:9090")
+
+	// Initialize handler with Wire DI (includes User Service gRPC client)
+	handler, err := inventory.InitializeHTTPHandler(db, userServiceAddr)
 	if err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to initialize handler")
 	}
 
-	logger.Logger.Info().Msg("Database initialized successfully")
+	logger.Logger.Info().
+		Str("user_service_grpc", userServiceAddr).
+		Msg("Inventory handler initialized with User Service client")
 
 	// Start HTTP server
 	httpPort := getEnv("HTTP_PORT", "8082")

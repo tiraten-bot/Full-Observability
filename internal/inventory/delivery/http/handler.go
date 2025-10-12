@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/tair/full-observability/internal/inventory/client"
 	"github.com/tair/full-observability/internal/inventory/domain"
 	"github.com/tair/full-observability/internal/inventory/usecase/command"
 	"github.com/tair/full-observability/internal/inventory/usecase/query"
@@ -24,11 +25,12 @@ type InventoryHandler struct {
 	getHandler  *query.GetInventoryHandler
 	listHandler *query.ListInventoryHandler
 
-	repo domain.InventoryRepository
+	repo       domain.InventoryRepository
+	userClient *client.UserServiceClient
 }
 
 // NewInventoryHandler creates a new inventory handler (manual DI)
-func NewInventoryHandler(repo domain.InventoryRepository) *InventoryHandler {
+func NewInventoryHandler(repo domain.InventoryRepository, userClient *client.UserServiceClient) *InventoryHandler {
 	return &InventoryHandler{
 		createHandler:        command.NewCreateInventoryHandler(repo),
 		updateQuantityHandler: command.NewUpdateQuantityHandler(repo),
@@ -36,6 +38,7 @@ func NewInventoryHandler(repo domain.InventoryRepository) *InventoryHandler {
 		getHandler:          query.NewGetInventoryHandler(repo),
 		listHandler:         query.NewListInventoryHandler(repo),
 		repo:                repo,
+		userClient:          userClient,
 	}
 }
 
@@ -47,6 +50,7 @@ func NewInventoryHandlerWithDI(
 	getHandler *query.GetInventoryHandler,
 	listHandler *query.ListInventoryHandler,
 	repo domain.InventoryRepository,
+	userClient *client.UserServiceClient,
 ) *InventoryHandler {
 	return &InventoryHandler{
 		createHandler:        createHandler,
@@ -55,6 +59,7 @@ func NewInventoryHandlerWithDI(
 		getHandler:          getHandler,
 		listHandler:         listHandler,
 		repo:                repo,
+		userClient:          userClient,
 	}
 }
 
@@ -204,10 +209,13 @@ func (h *InventoryHandler) UpdateQuantity(w http.ResponseWriter, r *http.Request
 
 // RegisterRoutes registers all inventory routes
 func (h *InventoryHandler) RegisterRoutes(router *mux.Router) {
+	// Public routes (no auth)
 	router.HandleFunc("/api/inventory", h.ListInventory).Methods("GET")
-	router.HandleFunc("/api/inventory", h.CreateInventory).Methods("POST")
 	router.HandleFunc("/api/inventory/{id}", h.GetInventory).Methods("GET")
-	router.HandleFunc("/api/inventory/{product_id}/quantity", h.UpdateQuantity).Methods("PATCH")
+
+	// Admin routes (require admin role)
+	router.HandleFunc("/api/inventory", AdminMiddleware(h.userClient)(h.CreateInventory)).Methods("POST")
+	router.HandleFunc("/api/inventory/{product_id}/quantity", AdminMiddleware(h.userClient)(h.UpdateQuantity)).Methods("PATCH")
 }
 
 // RegisterHealthCheck registers health check endpoint

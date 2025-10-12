@@ -100,6 +100,7 @@ services:
       DB_NAME: inventorydb
       DB_SSLMODE: disable
       HTTP_PORT: 8082
+      USER_SERVICE_GRPC_ADDR: user-service:9090
       OTEL_SERVICE_NAME: inventory-service
       ENVIRONMENT: production
       LOG_LEVEL: info
@@ -108,6 +109,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      user-service:
+        condition: service_started
     networks:
       - observability-network
     restart: unless-stopped
