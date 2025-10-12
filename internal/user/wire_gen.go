@@ -7,6 +7,7 @@
 package user
 
 import (
+	"github.com/google/wire"
 	"github.com/tair/full-observability/internal/user/delivery/grpc"
 	"github.com/tair/full-observability/internal/user/delivery/http"
 	"github.com/tair/full-observability/internal/user/domain"
@@ -30,18 +31,7 @@ func InitializeHTTPHandler(db *gorm.DB) (*http.UserHandler, error) {
 	getUserHandler := ProvideGetUserHandler(userRepository)
 	listUsersHandler := ProvideListUsersHandler(userRepository)
 	getStatsHandler := ProvideGetStatsHandler(userRepository)
-	userHandler := http.NewUserHandlerWithDI(
-		registerUserHandler,
-		loginUserHandler,
-		updateUserHandler,
-		deleteUserHandler,
-		changeRoleHandler,
-		toggleActiveHandler,
-		getUserHandler,
-		listUsersHandler,
-		getStatsHandler,
-		userRepository,
-	)
+	userHandler := http.NewUserHandlerWithDI(registerUserHandler, loginUserHandler, updateUserHandler, deleteUserHandler, changeRoleHandler, toggleActiveHandler, getUserHandler, listUsersHandler, getStatsHandler, userRepository)
 	return userHandler, nil
 }
 
@@ -57,17 +47,7 @@ func InitializeGRPCServer(db *gorm.DB) (*grpc.UserServer, error) {
 	getUserHandler := ProvideGetUserHandler(userRepository)
 	listUsersHandler := ProvideListUsersHandler(userRepository)
 	getStatsHandler := ProvideGetStatsHandler(userRepository)
-	userServer := grpc.NewUserServerWithDI(
-		registerUserHandler,
-		loginUserHandler,
-		updateUserHandler,
-		deleteUserHandler,
-		changeRoleHandler,
-		toggleActiveHandler,
-		getUserHandler,
-		listUsersHandler,
-		getStatsHandler,
-	)
+	userServer := grpc.NewUserServerWithDI(registerUserHandler, loginUserHandler, updateUserHandler, deleteUserHandler, changeRoleHandler, toggleActiveHandler, getUserHandler, listUsersHandler, getStatsHandler)
 	return userServer, nil
 }
 
@@ -78,48 +58,117 @@ func ProvideUserRepository(db *gorm.DB) domain.UserRepository {
 	return repository.NewGormUserRepository(db)
 }
 
-// ProvideRegisterUserHandler provides register user handler
+// Command Handlers Providers
 func ProvideRegisterUserHandler(repo domain.UserRepository) *command.RegisterUserHandler {
 	return command.NewRegisterUserHandler(repo)
 }
 
-// ProvideLoginUserHandler provides login user handler
 func ProvideLoginUserHandler(repo domain.UserRepository) *command.LoginUserHandler {
 	return command.NewLoginUserHandler(repo)
 }
 
-// ProvideUpdateUserHandler provides update user handler
 func ProvideUpdateUserHandler(repo domain.UserRepository) *command.UpdateUserHandler {
 	return command.NewUpdateUserHandler(repo)
 }
 
-// ProvideDeleteUserHandler provides delete user handler
 func ProvideDeleteUserHandler(repo domain.UserRepository) *command.DeleteUserHandler {
 	return command.NewDeleteUserHandler(repo)
 }
 
-// ProvideChangeRoleHandler provides change role handler
 func ProvideChangeRoleHandler(repo domain.UserRepository) *command.ChangeRoleHandler {
 	return command.NewChangeRoleHandler(repo)
 }
 
-// ProvideToggleActiveHandler provides toggle active handler
 func ProvideToggleActiveHandler(repo domain.UserRepository) *command.ToggleActiveHandler {
 	return command.NewToggleActiveHandler(repo)
 }
 
-// ProvideGetUserHandler provides get user handler
+// Query Handlers Providers
 func ProvideGetUserHandler(repo domain.UserRepository) *query.GetUserHandler {
 	return query.NewGetUserHandler(repo)
 }
 
-// ProvideListUsersHandler provides list users handler
 func ProvideListUsersHandler(repo domain.UserRepository) *query.ListUsersHandler {
 	return query.NewListUsersHandler(repo)
 }
 
-// ProvideGetStatsHandler provides get stats handler
 func ProvideGetStatsHandler(repo domain.UserRepository) *query.GetStatsHandler {
 	return query.NewGetStatsHandler(repo)
 }
 
+// CommandHandlers is a struct that holds all command handlers
+type CommandHandlers struct {
+	RegisterHandler     *command.RegisterUserHandler
+	LoginHandler        *command.LoginUserHandler
+	UpdateHandler       *command.UpdateUserHandler
+	DeleteHandler       *command.DeleteUserHandler
+	ChangeRoleHandler   *command.ChangeRoleHandler
+	ToggleActiveHandler *command.ToggleActiveHandler
+}
+
+// QueryHandlers is a struct that holds all query handlers
+type QueryHandlers struct {
+	GetUserHandler *query.GetUserHandler
+	ListHandler    *query.ListUsersHandler
+	StatsHandler   *query.GetStatsHandler
+}
+
+// ProvideCommandHandlers provides all command handlers
+func ProvideCommandHandlers(
+	registerHandler *command.RegisterUserHandler,
+	loginHandler *command.LoginUserHandler,
+	updateHandler *command.UpdateUserHandler,
+	deleteHandler *command.DeleteUserHandler,
+	changeRoleHandler *command.ChangeRoleHandler,
+	toggleActiveHandler *command.ToggleActiveHandler,
+) *CommandHandlers {
+	return &CommandHandlers{
+		RegisterHandler:     registerHandler,
+		LoginHandler:        loginHandler,
+		UpdateHandler:       updateHandler,
+		DeleteHandler:       deleteHandler,
+		ChangeRoleHandler:   changeRoleHandler,
+		ToggleActiveHandler: toggleActiveHandler,
+	}
+}
+
+// ProvideQueryHandlers provides all query handlers
+func ProvideQueryHandlers(
+	getUserHandler *query.GetUserHandler,
+	listHandler *query.ListUsersHandler,
+	statsHandler *query.GetStatsHandler,
+) *QueryHandlers {
+	return &QueryHandlers{
+		GetUserHandler: getUserHandler,
+		ListHandler:    listHandler,
+		StatsHandler:   statsHandler,
+	}
+}
+
+// Wire sets
+var RepositorySet = wire.NewSet(
+	ProvideUserRepository,
+)
+
+var CommandHandlerSet = wire.NewSet(
+	ProvideRegisterUserHandler,
+	ProvideLoginUserHandler,
+	ProvideUpdateUserHandler,
+	ProvideDeleteUserHandler,
+	ProvideChangeRoleHandler,
+	ProvideToggleActiveHandler,
+	ProvideCommandHandlers,
+)
+
+var QueryHandlerSet = wire.NewSet(
+	ProvideGetUserHandler,
+	ProvideListUsersHandler,
+	ProvideGetStatsHandler,
+	ProvideQueryHandlers,
+)
+
+var AllHandlersSet = wire.NewSet(
+	RepositorySet,
+	CommandHandlerSet,
+	QueryHandlerSet,
+)

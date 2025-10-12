@@ -7,6 +7,7 @@
 package product
 
 import (
+	"github.com/google/wire"
 	"github.com/tair/full-observability/internal/product/delivery/http"
 	"github.com/tair/full-observability/internal/product/domain"
 	"github.com/tair/full-observability/internal/product/repository"
@@ -27,16 +28,7 @@ func InitializeHTTPHandler(db *gorm.DB) (*http.ProductHandler, error) {
 	getProductHandler := ProvideGetProductHandler(productRepository)
 	listProductsHandler := ProvideListProductsHandler(productRepository)
 	getStatsHandler := ProvideGetStatsHandler(productRepository)
-	productHandler := http.NewProductHandlerWithDI(
-		createProductHandler,
-		updateProductHandler,
-		deleteProductHandler,
-		updateStockHandler,
-		getProductHandler,
-		listProductsHandler,
-		getStatsHandler,
-		productRepository,
-	)
+	productHandler := http.NewProductHandlerWithDI(createProductHandler, updateProductHandler, deleteProductHandler, updateStockHandler, getProductHandler, listProductsHandler, getStatsHandler, productRepository)
 	return productHandler, nil
 }
 
@@ -47,38 +39,101 @@ func ProvideProductRepository(db *gorm.DB) domain.ProductRepository {
 	return repository.NewGormProductRepository(db)
 }
 
-// ProvideCreateProductHandler provides create product handler
+// Command Handlers Providers
 func ProvideCreateProductHandler(repo domain.ProductRepository) *command.CreateProductHandler {
 	return command.NewCreateProductHandler(repo)
 }
 
-// ProvideUpdateProductHandler provides update product handler
 func ProvideUpdateProductHandler(repo domain.ProductRepository) *command.UpdateProductHandler {
 	return command.NewUpdateProductHandler(repo)
 }
 
-// ProvideDeleteProductHandler provides delete product handler
 func ProvideDeleteProductHandler(repo domain.ProductRepository) *command.DeleteProductHandler {
 	return command.NewDeleteProductHandler(repo)
 }
 
-// ProvideUpdateStockHandler provides update stock handler
 func ProvideUpdateStockHandler(repo domain.ProductRepository) *command.UpdateStockHandler {
 	return command.NewUpdateStockHandler(repo)
 }
 
-// ProvideGetProductHandler provides get product handler
+// Query Handlers Providers
 func ProvideGetProductHandler(repo domain.ProductRepository) *query.GetProductHandler {
 	return query.NewGetProductHandler(repo)
 }
 
-// ProvideListProductsHandler provides list products handler
 func ProvideListProductsHandler(repo domain.ProductRepository) *query.ListProductsHandler {
 	return query.NewListProductsHandler(repo)
 }
 
-// ProvideGetStatsHandler provides get stats handler
 func ProvideGetStatsHandler(repo domain.ProductRepository) *query.GetStatsHandler {
 	return query.NewGetStatsHandler(repo)
 }
 
+// CommandHandlers is a struct that holds all command handlers
+type CommandHandlers struct {
+	CreateHandler      *command.CreateProductHandler
+	UpdateHandler      *command.UpdateProductHandler
+	DeleteHandler      *command.DeleteProductHandler
+	UpdateStockHandler *command.UpdateStockHandler
+}
+
+// QueryHandlers is a struct that holds all query handlers
+type QueryHandlers struct {
+	GetProductHandler *query.GetProductHandler
+	ListHandler       *query.ListProductsHandler
+	StatsHandler      *query.GetStatsHandler
+}
+
+// ProvideCommandHandlers provides all command handlers
+func ProvideCommandHandlers(
+	createHandler *command.CreateProductHandler,
+	updateHandler *command.UpdateProductHandler,
+	deleteHandler *command.DeleteProductHandler,
+	updateStockHandler *command.UpdateStockHandler,
+) *CommandHandlers {
+	return &CommandHandlers{
+		CreateHandler:      createHandler,
+		UpdateHandler:      updateHandler,
+		DeleteHandler:      deleteHandler,
+		UpdateStockHandler: updateStockHandler,
+	}
+}
+
+// ProvideQueryHandlers provides all query handlers
+func ProvideQueryHandlers(
+	getProductHandler *query.GetProductHandler,
+	listHandler *query.ListProductsHandler,
+	statsHandler *query.GetStatsHandler,
+) *QueryHandlers {
+	return &QueryHandlers{
+		GetProductHandler: getProductHandler,
+		ListHandler:       listHandler,
+		StatsHandler:      statsHandler,
+	}
+}
+
+// Wire sets
+var RepositorySet = wire.NewSet(
+	ProvideProductRepository,
+)
+
+var CommandHandlerSet = wire.NewSet(
+	ProvideCreateProductHandler,
+	ProvideUpdateProductHandler,
+	ProvideDeleteProductHandler,
+	ProvideUpdateStockHandler,
+	ProvideCommandHandlers,
+)
+
+var QueryHandlerSet = wire.NewSet(
+	ProvideGetProductHandler,
+	ProvideListProductsHandler,
+	ProvideGetStatsHandler,
+	ProvideQueryHandlers,
+)
+
+var AllHandlersSet = wire.NewSet(
+	RepositorySet,
+	CommandHandlerSet,
+	QueryHandlerSet,
+)

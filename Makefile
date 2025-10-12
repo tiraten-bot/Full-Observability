@@ -1,4 +1,4 @@
-.PHONY: proto proto-install swagger clean help
+.PHONY: proto proto-install swagger wire wire-install clean help
 
 # Help target
 help:
@@ -6,6 +6,8 @@ help:
 	@echo "  proto-install  - Install protoc and Go plugins"
 	@echo "  proto          - Generate Go code from proto files"
 	@echo "  swagger        - Generate Swagger documentation"
+	@echo "  wire-install   - Install Wire dependency injection tool"
+	@echo "  wire           - Generate dependency injection code with Wire"
 	@echo "  clean          - Clean generated files"
 	@echo "  docker-up      - Start docker containers"
 	@echo "  docker-down    - Stop docker containers"
@@ -34,10 +36,25 @@ swagger:
 	swag init -g cmd/user/docs.go -o cmd/user/docs --parseDependency --parseInternal
 	@echo "Swagger generation complete!"
 
+# Install Wire
+wire-install:
+	@echo "Installing Wire dependency injection tool..."
+	go install github.com/google/wire/cmd/wire@latest
+	@echo "Wire installation complete!"
+
+# Generate dependency injection code with Wire
+wire:
+	@echo "Generating dependency injection code with Wire..."
+	@cd internal/user && go generate
+	@cd internal/product && go generate
+	@echo "Wire generation complete!"
+
 # Clean generated files
 clean:
 	@echo "Cleaning generated files..."
 	rm -f api/proto/user/*.pb.go
+	rm -f internal/user/wire_gen.go
+	rm -f internal/product/wire_gen.go
 
 # Docker commands
 docker-up:
