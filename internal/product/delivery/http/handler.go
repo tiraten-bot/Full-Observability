@@ -124,13 +124,16 @@ func (h *ProductHandler) metricsMiddleware(endpoint string, next http.HandlerFun
 }
 
 func (h *ProductHandler) RegisterRoutes(router *mux.Router) {
-	router.HandleFunc("/api/products", h.metricsMiddleware("/api/products", h.CreateProduct)).Methods("POST")
+	// Public routes (no auth required)
 	router.HandleFunc("/api/products", h.metricsMiddleware("/api/products", h.ListProducts)).Methods("GET")
-	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", h.GetProduct)).Methods("GET")
-	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", h.UpdateProduct)).Methods("PUT")
-	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", h.DeleteProduct)).Methods("DELETE")
-	router.HandleFunc("/api/products/{id}/stock", h.metricsMiddleware("/api/products/{id}/stock", h.UpdateStock)).Methods("PATCH")
 	router.HandleFunc("/api/products/stats", h.metricsMiddleware("/api/products/stats", h.GetStats)).Methods("GET")
+	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", h.GetProduct)).Methods("GET")
+
+	// Admin routes (admin role required)
+	router.HandleFunc("/api/products", h.metricsMiddleware("/api/products", AdminMiddleware(h.CreateProduct))).Methods("POST")
+	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", AdminMiddleware(h.UpdateProduct))).Methods("PUT")
+	router.HandleFunc("/api/products/{id}", h.metricsMiddleware("/api/products/{id}", AdminMiddleware(h.DeleteProduct))).Methods("DELETE")
+	router.HandleFunc("/api/products/{id}/stock", h.metricsMiddleware("/api/products/{id}/stock", AdminMiddleware(h.UpdateStock))).Methods("PATCH")
 }
 
 // CreateProduct handles POST /api/products
@@ -421,6 +424,7 @@ func (h *ProductHandler) updateProductsMetric() {
 	}
 }
 
+// respondJSON sends a JSON response
 func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
