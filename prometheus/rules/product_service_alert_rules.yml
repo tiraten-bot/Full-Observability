@@ -1,0 +1,210 @@
+groups:
+  - name: product_service_alerts
+    interval: 30s
+    rules:
+      # High HTTP Error Rate
+      - alert: ProductServiceHighHTTPErrorRate
+        expr: job:product_service_http_error_rate:5m > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: product-service
+          protocol: http
+        annotations:
+          summary: "Product Service has high HTTP error rate"
+          description: "Product Service HTTP error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # Critical HTTP Error Rate
+      - alert: ProductServiceCriticalHTTPErrorRate
+        expr: job:product_service_http_error_rate:5m > 0.15
+        for: 1m
+        labels:
+          severity: critical
+          service: product-service
+          protocol: http
+        annotations:
+          summary: "Product Service has critical HTTP error rate"
+          description: "Product Service HTTP error rate is {{ $value | humanizePercentage }} (threshold: 15%)"
+
+      # High gRPC Error Rate
+      - alert: ProductServiceHighGRPCErrorRate
+        expr: job:product_service_grpc_error_rate:5m > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: product-service
+          protocol: grpc
+        annotations:
+          summary: "Product Service has high gRPC error rate"
+          description: "Product Service gRPC error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # Slow HTTP Requests (P99)
+      - alert: ProductServiceSlowHTTPRequests
+        expr: product_service_request_duration_summary{quantile="0.99"} > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: product-service
+          protocol: http
+        annotations:
+          summary: "Product Service has slow HTTP requests"
+          description: "P99 latency is {{ $value }}s for {{ $labels.method }} {{ $labels.endpoint }}"
+
+      # Slow gRPC Requests (P99)
+      - alert: ProductServiceSlowGRPCRequests
+        expr: product_service_grpc_request_duration_summary{quantile="0.99"} > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: product-service
+          protocol: grpc
+        annotations:
+          summary: "Product Service has slow gRPC requests"
+          description: "P99 latency is {{ $value }}s for {{ $labels.method }}"
+
+      # High Out of Stock Products
+      - alert: ProductServiceHighOutOfStockRate
+        expr: job:product_service_out_of_stock_percentage > 20
+        for: 10m
+        labels:
+          severity: warning
+          service: product-service
+          type: business
+        annotations:
+          summary: "High percentage of out-of-stock products"
+          description: "{{ $value }}% of products are out of stock (threshold: 20%)"
+
+      # Critical Out of Stock Products
+      - alert: ProductServiceCriticalOutOfStockRate
+        expr: job:product_service_out_of_stock_percentage > 40
+        for: 5m
+        labels:
+          severity: critical
+          service: product-service
+          type: business
+        annotations:
+          summary: "CRITICAL: Very high out-of-stock rate"
+          description: "{{ $value }}% of products are out of stock!"
+
+      # High Low Stock Products
+      - alert: ProductServiceHighLowStockRate
+        expr: job:product_service_low_stock_percentage > 30
+        for: 15m
+        labels:
+          severity: warning
+          service: product-service
+          type: business
+        annotations:
+          summary: "Many products are running low on stock"
+          description: "{{ $value }}% of products have low stock (≤10 units)"
+
+      # No Products Available
+      - alert: ProductServiceNoProducts
+        expr: product_service_total_products == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: product-service
+          type: business
+        annotations:
+          summary: "No products in the system"
+          description: "Product catalog is empty!"
+
+      # High Stock Update Failure Rate
+      - alert: ProductServiceHighStockUpdateFailureRate
+        expr: |
+          sum(rate(product_service_stock_updates_total{status="failed"}[5m])) /
+          sum(rate(product_service_stock_updates_total[5m])) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          service: product-service
+          type: business
+        annotations:
+          summary: "High stock update failure rate"
+          description: "{{ $value | humanizePercentage }} of stock updates are failing"
+
+      # High Product Operation Errors
+      - alert: ProductServiceHighOperationErrors
+        expr: sum(rate(product_service_errors_total[5m])) > 2
+        for: 3m
+        labels:
+          severity: warning
+          service: product-service
+        annotations:
+          summary: "High product operation error rate"
+          description: "{{ $value }} product operation errors per second"
+
+      # Database Connection Pool Exhaustion
+      - alert: ProductServiceDBPoolNearExhaustion
+        expr: job:product_service_db_pool_utilization > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: product-service
+          component: database
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "Connection pool is {{ $value }}% utilized"
+
+      # Database Connection Pool Critical
+      - alert: ProductServiceDBPoolExhausted
+        expr: job:product_service_db_pool_utilization > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: product-service
+          component: database
+        annotations:
+          summary: "Database connection pool exhausted"
+          description: "Connection pool is {{ $value }}% utilized. Service degradation likely!"
+
+      # High Database Wait Rate
+      - alert: ProductServiceHighDBWaitRate
+        expr: job:product_service_db_wait_rate:5m > 5
+        for: 3m
+        labels:
+          severity: warning
+          service: product-service
+          component: database
+        annotations:
+          summary: "High database connection wait rate"
+          description: "{{ $value }} connections per second are waiting for availability"
+
+      # Service Down
+      - alert: ProductServiceDown
+        expr: up{job="product-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: product-service
+        annotations:
+          summary: "Product Service is down"
+          description: "Product Service has been down for more than 1 minute"
+
+      # High Memory Usage (if Go runtime metrics available)
+      - alert: ProductServiceHighMemoryUsage
+        expr: |
+          go_memstats_heap_inuse_bytes{job="product-service"} /
+          go_memstats_heap_alloc_bytes{job="product-service"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: product-service
+          component: runtime
+        annotations:
+          summary: "Product Service high memory usage"
+          description: "Memory usage is above 90%"
+
+      # Too Many Goroutines
+      - alert: ProductServiceTooManyGoroutines
+        expr: go_goroutines{job="product-service"} > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: product-service
+          component: runtime
+        annotations:
+          summary: "Product Service has too many goroutines"
+          description: "{{ $value }} goroutines are running"
+

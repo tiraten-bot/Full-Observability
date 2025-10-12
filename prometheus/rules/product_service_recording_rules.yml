@@ -1,0 +1,113 @@
+groups:
+  - name: product_service_recording_rules
+    interval: 30s
+    rules:
+      # HTTP Request Rate (5 minute window)
+      - record: job:product_service_http_request_rate:5m
+        expr: sum(rate(product_service_requests_total[5m])) by (method, endpoint)
+        labels:
+          service: product-service
+          protocol: http
+
+      # HTTP Success Rate (5 minute window)
+      - record: job:product_service_http_success_rate:5m
+        expr: |
+          sum(rate(product_service_requests_total{status=~"2.."}[5m])) /
+          sum(rate(product_service_requests_total[5m]))
+        labels:
+          service: product-service
+          protocol: http
+
+      # HTTP Error Rate (5 minute window)
+      - record: job:product_service_http_error_rate:5m
+        expr: |
+          sum(rate(product_service_requests_total{status=~"[45].."}[5m])) /
+          sum(rate(product_service_requests_total[5m]))
+        labels:
+          service: product-service
+          protocol: http
+
+      # Average HTTP Request Duration
+      - record: job:product_service_http_request_duration_avg:5m
+        expr: |
+          rate(product_service_request_duration_seconds_sum[5m]) /
+          rate(product_service_request_duration_seconds_count[5m])
+        labels:
+          service: product-service
+          protocol: http
+
+      # gRPC Request Rate (5 minute window)
+      - record: job:product_service_grpc_request_rate:5m
+        expr: sum(rate(product_service_grpc_requests_total[5m])) by (method)
+        labels:
+          service: product-service
+          protocol: grpc
+
+      # gRPC Success Rate (5 minute window)
+      - record: job:product_service_grpc_success_rate:5m
+        expr: |
+          sum(rate(product_service_grpc_requests_total{status_code="OK"}[5m])) /
+          sum(rate(product_service_grpc_requests_total[5m]))
+        labels:
+          service: product-service
+          protocol: grpc
+
+      # gRPC Error Rate (5 minute window)
+      - record: job:product_service_grpc_error_rate:5m
+        expr: |
+          sum(rate(product_service_grpc_errors_total[5m])) /
+          sum(rate(product_service_grpc_requests_total[5m]))
+        labels:
+          service: product-service
+          protocol: grpc
+
+      # Stock Update Success Rate
+      - record: job:product_service_stock_update_success_rate:5m
+        expr: |
+          sum(rate(product_service_stock_updates_total{status="success"}[5m])) /
+          sum(rate(product_service_stock_updates_total[5m]))
+        labels:
+          service: product-service
+
+      # Out of Stock Percentage
+      - record: job:product_service_out_of_stock_percentage
+        expr: |
+          product_service_out_of_stock_total /
+          product_service_total_products * 100
+        labels:
+          service: product-service
+
+      # Low Stock Percentage
+      - record: job:product_service_low_stock_percentage
+        expr: |
+          product_service_low_stock_total /
+          product_service_total_products * 100
+        labels:
+          service: product-service
+
+      # Product Error Rate by Operation
+      - record: job:product_service_error_rate_by_operation:5m
+        expr: sum(rate(product_service_errors_total[5m])) by (operation, error_type)
+        labels:
+          service: product-service
+
+      # Database Connection Pool Utilization
+      - record: job:product_service_db_pool_utilization
+        expr: |
+          product_service_db_in_use_connections /
+          product_service_db_max_open_connections * 100
+        labels:
+          service: product-service
+
+      # Database Connection Wait Rate
+      - record: job:product_service_db_wait_rate:5m
+        expr: rate(product_service_db_wait_count_total[5m])
+        labels:
+          service: product-service
+
+      # Stock Update Rate by Operation
+      - record: job:product_service_stock_update_rate:5m
+        expr: sum(rate(product_service_stock_updates_total[5m])) by (operation, status)
+        labels:
+          service: product-service
+

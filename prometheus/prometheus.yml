@@ -14,6 +14,8 @@ global:
 rule_files:
   - "/etc/prometheus/rules/user_service_recording_rules.yml"
   - "/etc/prometheus/rules/user_service_alert_rules.yml"
+  - "/etc/prometheus/rules/product_service_recording_rules.yml"
+  - "/etc/prometheus/rules/product_service_alert_rules.yml"
 
 # Scrape configurations
 scrape_configs:
