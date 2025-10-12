@@ -7,6 +7,7 @@ import (
 	"github.com/google/wire"
 	"gorm.io/gorm"
 
+	"github.com/tair/full-observability/internal/product/delivery/grpc"
 	"github.com/tair/full-observability/internal/product/delivery/http"
 	"github.com/tair/full-observability/internal/product/domain"
 	"github.com/tair/full-observability/internal/product/repository"
@@ -123,6 +124,15 @@ func InitializeHTTPHandler(db *gorm.DB) (*http.ProductHandler, error) {
 	wire.Build(
 		AllHandlersSet,
 		http.NewProductHandlerWithDI,
+	)
+	return nil, nil
+}
+
+// InitializeGRPCServer initializes gRPC server with all dependencies
+func InitializeGRPCServer(db *gorm.DB) (*grpc.ProductServer, error) {
+	wire.Build(
+		AllHandlersSet,
+		grpc.NewProductServerWithDI,
 	)
 	return nil, nil
 }

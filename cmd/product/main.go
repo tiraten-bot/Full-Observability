@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,8 +14,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 
+	pb "github.com/tair/full-observability/api/proto/product"
 	_ "github.com/tair/full-observability/cmd/product/docs"
+	grpcDelivery "github.com/tair/full-observability/internal/product/delivery/grpc"
 	httpDelivery "github.com/tair/full-observability/internal/product/delivery/http"
 	"github.com/tair/full-observability/internal/product/repository"
 	"github.com/tair/full-observability/pkg/database"
@@ -83,16 +88,20 @@ func main() {
 
 	logger.Logger.Info().Msg("Database initialized successfully")
 
-	// Start HTTP server
+	// Start HTTP server in a goroutine
 	httpPort := getEnv("HTTP_PORT", "8081")
 	go startHTTPServer(repo, sqlDB, httpPort)
+
+	// Start gRPC server in a goroutine
+	grpcPort := getEnv("GRPC_PORT", "9091")
+	go startGRPCServer(repo, grpcPort)
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Logger.Info().Msg("Shutting down server...")
+	logger.Logger.Info().Msg("Shutting down servers...")
 }
 
 func startHTTPServer(repo *repository.GormProductRepository, db *sql.DB, port string) {
@@ -136,6 +145,43 @@ func startHTTPServer(repo *repository.GormProductRepository, db *sql.DB, port st
 
 	if err := http.ListenAndServe(":"+port, c.Handler(router)); err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to start HTTP server")
+	}
+}
+
+func startGRPCServer(repo *repository.GormProductRepository, port string) {
+	// Create gRPC server with interceptors (including tracing)
+	grpcServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			grpcDelivery.TracingInterceptor,  // Add tracing first
+			grpcDelivery.LoggingInterceptor,
+			grpcDelivery.AuthInterceptor,
+		),
+	)
+
+	// Register product service
+	productServer := grpcDelivery.NewProductServer(repo)
+	pb.RegisterProductServiceServer(grpcServer, productServer)
+
+	// Register reflection service (for grpcurl and grpc tools)
+	reflection.Register(grpcServer)
+
+	// Listen on TCP port
+	lis, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		logger.Logger.Fatal().
+			Str("port", port).
+			Err(err).
+			Msg("Failed to listen on gRPC port")
+	}
+
+	logger.Logger.Info().
+		Str("port", port).
+		Bool("reflection_enabled", true).
+		Bool("tracing_enabled", true).
+		Msg("gRPC server started")
+
+	if err := grpcServer.Serve(lis); err != nil {
+		logger.Logger.Fatal().Err(err).Msg("Failed to start gRPC server")
 	}
 }
 

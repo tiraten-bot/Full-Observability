@@ -8,6 +8,7 @@ package product
 
 import (
 	"github.com/google/wire"
+	"github.com/tair/full-observability/internal/product/delivery/grpc"
 	"github.com/tair/full-observability/internal/product/delivery/http"
 	"github.com/tair/full-observability/internal/product/domain"
 	"github.com/tair/full-observability/internal/product/repository"
@@ -30,6 +31,20 @@ func InitializeHTTPHandler(db *gorm.DB) (*http.ProductHandler, error) {
 	getStatsHandler := ProvideGetStatsHandler(productRepository)
 	productHandler := http.NewProductHandlerWithDI(createProductHandler, updateProductHandler, deleteProductHandler, updateStockHandler, getProductHandler, listProductsHandler, getStatsHandler, productRepository)
 	return productHandler, nil
+}
+
+// InitializeGRPCServer initializes gRPC server with all dependencies
+func InitializeGRPCServer(db *gorm.DB) (*grpc.ProductServer, error) {
+	productRepository := ProvideProductRepository(db)
+	createProductHandler := ProvideCreateProductHandler(productRepository)
+	updateProductHandler := ProvideUpdateProductHandler(productRepository)
+	deleteProductHandler := ProvideDeleteProductHandler(productRepository)
+	updateStockHandler := ProvideUpdateStockHandler(productRepository)
+	getProductHandler := ProvideGetProductHandler(productRepository)
+	listProductsHandler := ProvideListProductsHandler(productRepository)
+	getStatsHandler := ProvideGetStatsHandler(productRepository)
+	productServer := grpc.NewProductServerWithDI(createProductHandler, updateProductHandler, deleteProductHandler, updateStockHandler, getProductHandler, listProductsHandler, getStatsHandler, productRepository)
+	return productServer, nil
 }
 
 // wire.go:
