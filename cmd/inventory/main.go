@@ -91,8 +91,11 @@ func startHTTPServer(handler *httpDelivery.InventoryHandler, db *sql.DB, port st
 	// Setup router
 	router := mux.NewRouter()
 
-	// Add logging middleware to all routes
-	router.Use(httpDelivery.LoggingMiddleware)
+	// Add middlewares (order matters!)
+	router.Use(httpDelivery.LoggingMiddleware) // Logging first
+	router.Use(func(next http.Handler) http.Handler {
+		return httpDelivery.TracingMiddleware("http-request", next)
+	})
 
 	// Register routes
 	handler.RegisterRoutes(router)
