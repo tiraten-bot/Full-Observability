@@ -68,6 +68,7 @@ services:
       DB_NAME: productdb
       DB_SSLMODE: disable
       HTTP_PORT: 8081
+      GRPC_PORT: 9091
       JAEGER_ENDPOINT: http://jaeger:14268/api/traces
       OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
       OTEL_SERVICE_NAME: product-service
@@ -75,6 +76,7 @@ services:
       LOG_LEVEL: info
     ports:
       - "8081:8081"  # HTTP
+      - "9091:9091"  # gRPC
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,6 +92,7 @@ services:
     container_name: prometheus
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules:/etc/prometheus/rules
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'

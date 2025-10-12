@@ -1,0 +1,106 @@
+groups:
+  - name: user_service_recording_rules
+    interval: 30s
+    rules:
+      # HTTP Request Rate (5 minute window)
+      - record: job:user_service_http_request_rate:5m
+        expr: sum(rate(user_service_requests_total[5m])) by (method, endpoint)
+        labels:
+          service: user-service
+          protocol: http
+
+      # HTTP Success Rate (5 minute window)
+      - record: job:user_service_http_success_rate:5m
+        expr: |
+          sum(rate(user_service_requests_total{status=~"2.."}[5m])) /
+          sum(rate(user_service_requests_total[5m]))
+        labels:
+          service: user-service
+          protocol: http
+
+      # HTTP Error Rate (5 minute window)
+      - record: job:user_service_http_error_rate:5m
+        expr: |
+          sum(rate(user_service_requests_total{status=~"[45].."}[5m])) /
+          sum(rate(user_service_requests_total[5m]))
+        labels:
+          service: user-service
+          protocol: http
+
+      # Average HTTP Request Duration
+      - record: job:user_service_http_request_duration_avg:5m
+        expr: |
+          rate(user_service_request_duration_seconds_sum[5m]) /
+          rate(user_service_request_duration_seconds_count[5m])
+        labels:
+          service: user-service
+          protocol: http
+
+      # gRPC Request Rate (5 minute window)
+      - record: job:user_service_grpc_request_rate:5m
+        expr: sum(rate(user_service_grpc_requests_total[5m])) by (method)
+        labels:
+          service: user-service
+          protocol: grpc
+
+      # gRPC Success Rate (5 minute window)
+      - record: job:user_service_grpc_success_rate:5m
+        expr: |
+          sum(rate(user_service_grpc_requests_total{status_code="OK"}[5m])) /
+          sum(rate(user_service_grpc_requests_total[5m]))
+        labels:
+          service: user-service
+          protocol: grpc
+
+      # gRPC Error Rate (5 minute window)
+      - record: job:user_service_grpc_error_rate:5m
+        expr: |
+          sum(rate(user_service_grpc_errors_total[5m])) /
+          sum(rate(user_service_grpc_requests_total[5m]))
+        labels:
+          service: user-service
+          protocol: grpc
+
+      # Failed Login Rate (5 minute window)
+      - record: job:user_service_failed_login_rate:5m
+        expr: sum(rate(user_service_failed_logins_total[5m])) by (reason)
+        labels:
+          service: user-service
+
+      # Login Success Rate
+      - record: job:user_service_login_success_rate:5m
+        expr: |
+          rate(user_service_successful_logins_total[5m]) /
+          (rate(user_service_successful_logins_total[5m]) + 
+           sum(rate(user_service_failed_logins_total[5m])))
+        labels:
+          service: user-service
+
+      # Registration Rate (hourly)
+      - record: job:user_service_registration_rate:1h
+        expr: increase(user_service_registrations_total[1h])
+        labels:
+          service: user-service
+
+      # Active Users Percentage
+      - record: job:user_service_active_percentage
+        expr: |
+          user_service_active_users /
+          (user_service_active_users + user_service_inactive_users) * 100
+        labels:
+          service: user-service
+
+      # Database Connection Pool Utilization
+      - record: job:user_service_db_pool_utilization
+        expr: |
+          user_service_db_in_use_connections /
+          user_service_db_max_open_connections * 100
+        labels:
+          service: user-service
+
+      # Database Connection Wait Rate
+      - record: job:user_service_db_wait_rate:5m
+        expr: rate(user_service_db_wait_count_total[5m])
+        labels:
+          service: user-service
+

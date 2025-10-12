@@ -1,0 +1,210 @@
+groups:
+  - name: user_service_alerts
+    interval: 30s
+    rules:
+      # High HTTP Error Rate
+      - alert: UserServiceHighHTTPErrorRate
+        expr: job:user_service_http_error_rate:5m > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: user-service
+          protocol: http
+        annotations:
+          summary: "User Service has high HTTP error rate"
+          description: "User Service HTTP error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # Critical HTTP Error Rate
+      - alert: UserServiceCriticalHTTPErrorRate
+        expr: job:user_service_http_error_rate:5m > 0.15
+        for: 1m
+        labels:
+          severity: critical
+          service: user-service
+          protocol: http
+        annotations:
+          summary: "User Service has critical HTTP error rate"
+          description: "User Service HTTP error rate is {{ $value | humanizePercentage }} (threshold: 15%)"
+
+      # High gRPC Error Rate
+      - alert: UserServiceHighGRPCErrorRate
+        expr: job:user_service_grpc_error_rate:5m > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: user-service
+          protocol: grpc
+        annotations:
+          summary: "User Service has high gRPC error rate"
+          description: "User Service gRPC error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # Slow HTTP Requests (P99)
+      - alert: UserServiceSlowHTTPRequests
+        expr: user_service_request_duration_summary{quantile="0.99"} > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: user-service
+          protocol: http
+        annotations:
+          summary: "User Service has slow HTTP requests"
+          description: "P99 latency is {{ $value }}s for {{ $labels.method }} {{ $labels.endpoint }}"
+
+      # Slow gRPC Requests (P99)
+      - alert: UserServiceSlowGRPCRequests
+        expr: user_service_grpc_request_duration_summary{quantile="0.99"} > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: user-service
+          protocol: grpc
+        annotations:
+          summary: "User Service has slow gRPC requests"
+          description: "P99 latency is {{ $value }}s for {{ $labels.method }}"
+
+      # High Failed Login Rate (Potential Attack)
+      - alert: UserServiceHighFailedLoginRate
+        expr: sum(rate(user_service_failed_logins_total[5m])) > 10
+        for: 2m
+        labels:
+          severity: warning
+          service: user-service
+          security: true
+        annotations:
+          summary: "High failed login rate detected"
+          description: "Failed login rate is {{ $value }} per second. Potential brute force attack."
+
+      # Critical Failed Login Rate (Likely Attack)
+      - alert: UserServiceCriticalFailedLoginRate
+        expr: sum(rate(user_service_failed_logins_total[5m])) > 50
+        for: 1m
+        labels:
+          severity: critical
+          service: user-service
+          security: true
+        annotations:
+          summary: "CRITICAL: Very high failed login rate"
+          description: "Failed login rate is {{ $value }} per second. Likely under attack!"
+
+      # Low Login Success Rate
+      - alert: UserServiceLowLoginSuccessRate
+        expr: job:user_service_login_success_rate:5m < 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: user-service
+        annotations:
+          summary: "Login success rate is low"
+          description: "Only {{ $value | humanizePercentage }} of login attempts are successful"
+
+      # No Registrations (Business Alert)
+      - alert: UserServiceNoRegistrations
+        expr: increase(user_service_registrations_total[1h]) == 0
+        for: 2h
+        labels:
+          severity: info
+          service: user-service
+          type: business
+        annotations:
+          summary: "No new user registrations"
+          description: "No new users registered in the last 2 hours"
+
+      # Too Many Inactive Users
+      - alert: UserServiceHighInactiveUserRate
+        expr: |
+          user_service_inactive_users / 
+          (user_service_active_users + user_service_inactive_users) > 0.4
+        for: 1h
+        labels:
+          severity: info
+          service: user-service
+          type: business
+        annotations:
+          summary: "High percentage of inactive users"
+          description: "{{ $value | humanizePercentage }} of users are inactive"
+
+      # Database Connection Pool Exhaustion
+      - alert: UserServiceDBPoolNearExhaustion
+        expr: job:user_service_db_pool_utilization > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: user-service
+          component: database
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "Connection pool is {{ $value }}% utilized"
+
+      # Database Connection Pool Critical
+      - alert: UserServiceDBPoolExhausted
+        expr: job:user_service_db_pool_utilization > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: user-service
+          component: database
+        annotations:
+          summary: "Database connection pool exhausted"
+          description: "Connection pool is {{ $value }}% utilized. Service degradation likely!"
+
+      # High Database Wait Rate
+      - alert: UserServiceHighDBWaitRate
+        expr: job:user_service_db_wait_rate:5m > 5
+        for: 3m
+        labels:
+          severity: warning
+          service: user-service
+          component: database
+        annotations:
+          summary: "High database connection wait rate"
+          description: "{{ $value }} connections per second are waiting for availability"
+
+      # Service Down
+      - alert: UserServiceDown
+        expr: up{job="user-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: user-service
+        annotations:
+          summary: "User Service is down"
+          description: "User Service has been down for more than 1 minute"
+
+      # High Memory Usage (if Go runtime metrics available)
+      - alert: UserServiceHighMemoryUsage
+        expr: |
+          go_memstats_heap_inuse_bytes{job="user-service"} /
+          go_memstats_heap_alloc_bytes{job="user-service"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: user-service
+          component: runtime
+        annotations:
+          summary: "User Service high memory usage"
+          description: "Memory usage is above 90%"
+
+      # Too Many Goroutines
+      - alert: UserServiceTooManyGoroutines
+        expr: go_goroutines{job="user-service"} > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: user-service
+          component: runtime
+        annotations:
+          summary: "User Service has too many goroutines"
+          description: "{{ $value }} goroutines are running"
+
+      # Auth Errors Spike
+      - alert: UserServiceAuthErrorsSpike
+        expr: sum(rate(user_service_auth_errors_total[5m])) > 5
+        for: 2m
+        labels:
+          severity: warning
+          service: user-service
+          security: true
+        annotations:
+          summary: "Authentication errors spike detected"
+          description: "{{ $value }} auth errors per second"
+

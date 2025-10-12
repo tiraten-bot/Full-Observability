@@ -11,8 +11,9 @@ global:
 #         - targets: []
 
 # Load rules once and periodically evaluate them
-# rule_files:
-#   - "alert_rules.yml"
+rule_files:
+  - "/etc/prometheus/rules/user_service_recording_rules.yml"
+  - "/etc/prometheus/rules/user_service_alert_rules.yml"
 
 # Scrape configurations
 scrape_configs:
