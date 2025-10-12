@@ -12,8 +12,10 @@ Bu proje, Go ile yazılmış mikroservis mimarisi ve tam observability (gözleml
 
 ### 2. Product Service (Port: 8081)
 - Ürün yönetimi (CRUD)
+- **CQRS Pattern** (Command Query Responsibility Segregation)
 - Stok yönetimi
 - Kategori bazlı filtreleme
+- İstatistik endpoint'i
 - REST API
 
 ## Observability Stack
@@ -136,12 +138,40 @@ graph LR
         A --> A2[product/main.go]
         
         B --> B1[user/<br/>CQRS Pattern]
-        B --> B2[product/<br/>Simple CRUD]
+        B --> B2[product/<br/>CQRS Pattern]
         
         C --> C1[database/]
         C --> C2[logger/]
         C --> C3[tracing/]
         C --> C4[auth/]
+    end
+```
+
+```mermaid
+graph LR
+    subgraph "CQRS Pattern - Product Service"
+        direction TB
+        H[HTTP Handler]
+        
+        subgraph Commands
+            C1[CreateProductCommand]
+            C2[UpdateProductCommand]
+            C3[DeleteProductCommand]
+            C4[UpdateStockCommand]
+        end
+        
+        subgraph Queries
+            Q1[GetProductQuery]
+            Q2[ListProductsQuery]
+            Q3[GetStatsQuery]
+        end
+        
+        R[(Repository)]
+        
+        H -->|Write Operations| Commands
+        H -->|Read Operations| Queries
+        Commands --> R
+        Queries --> R
     end
 ```
 

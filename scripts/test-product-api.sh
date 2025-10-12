@@ -81,8 +81,12 @@ fi
 echo -e "\n9. Listing products by category..."
 curl -s "$BASE_URL/api/products?category=Electronics&limit=10" | jq '.'
 
+# Get Stats
+echo -e "\n10. Getting product statistics..."
+curl -s "$BASE_URL/api/products/stats" | jq '.'
+
 # Metrics
-echo -e "\n10. Checking metrics endpoint..."
+echo -e "\n11. Checking metrics endpoint..."
 curl -s $BASE_URL/metrics | head -n 20
 
 echo -e "\n================================"
