@@ -153,12 +153,13 @@ func startHTTPServer(repo *repository.GormProductRepository, db *sql.DB, port st
 }
 
 func startGRPCServer(repo *repository.GormProductRepository, port string) {
-	// Create gRPC server with interceptors (including tracing)
+	// Create gRPC server with interceptors
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
 			grpcDelivery.TracingInterceptor,  // Add tracing first
-			grpcDelivery.LoggingInterceptor,
-			grpcDelivery.AuthInterceptor,
+			grpcDelivery.MetricsInterceptor,  // Collect metrics
+			grpcDelivery.LoggingInterceptor,  // Log requests
+			grpcDelivery.AuthInterceptor,     // Verify auth
 		),
 	)
 
@@ -182,6 +183,7 @@ func startGRPCServer(repo *repository.GormProductRepository, port string) {
 		Str("port", port).
 		Bool("reflection_enabled", true).
 		Bool("tracing_enabled", true).
+		Bool("metrics_enabled", true).
 		Msg("gRPC server started")
 
 	if err := grpcServer.Serve(lis); err != nil {
