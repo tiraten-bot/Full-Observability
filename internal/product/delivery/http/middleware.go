@@ -92,6 +92,11 @@ func OptionalAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			token := parts[1]
 			claims, err := auth.ValidateToken(token)
 			if err == nil {
+				logger.Logger.Debug().
+					Uint("user_id", claims.UserID).
+					Str("username", claims.Username).
+					Msg("Optional auth: User identified")
+
 				// Valid token, add to context
 				ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 				ctx = context.WithValue(ctx, UsernameKey, claims.Username)
