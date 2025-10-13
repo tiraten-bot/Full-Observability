@@ -175,7 +175,7 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Publish product purchased event to Kafka
+	// Publish product purchased event to Kafka (with tracing)
 	if h.kafkaPublisher != nil {
 		event := kafka.ProductPurchasedEvent{
 			PaymentID:     payment.ID,
@@ -187,7 +187,7 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 			PaymentMethod: req.PaymentMethod,
 		}
 
-		if err := h.kafkaPublisher.PublishProductPurchased(event); err != nil {
+		if err := h.kafkaPublisher.PublishProductPurchased(ctx, event); err != nil {
 			logger.Logger.Error().
 				Err(err).
 				Uint("payment_id", payment.ID).

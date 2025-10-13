@@ -7,6 +7,12 @@ import (
 	"sync"
 
 	"github.com/IBM/sarama"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/tair/full-observability/pkg/logger"
 )
 
@@ -130,25 +136,62 @@ func (h *consumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 }
 
 func (h *consumerGroupHandler) handleMessage(ctx context.Context, message *sarama.ConsumerMessage) {
+	// Extract trace context from Kafka headers
+	carrier := propagation.MapCarrier{}
+	for _, header := range message.Headers {
+		key := string(header.Key)
+		// Only extract trace context headers
+		if key == "traceparent" || key == "tracestate" {
+			carrier[key] = string(header.Value)
+		}
+	}
+
+	// Extract context with trace
+	ctx = otel.GetTextMapPropagator().Extract(ctx, carrier)
+
+	// Start consumer span
+	tracer := otel.Tracer("kafka-consumer")
+	ctx, span := tracer.Start(ctx, "kafka.consume.product_purchased",
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "kafka"),
+			attribute.String("messaging.source", message.Topic),
+			attribute.String("messaging.source_kind", "topic"),
+			attribute.Int("messaging.kafka.partition", int(message.Partition)),
+			attribute.Int64("messaging.kafka.offset", message.Offset),
+		),
+	)
+	defer span.End()
+
 	logger.Logger.Debug().
 		Str("topic", message.Topic).
 		Int32("partition", message.Partition).
 		Int64("offset", message.Offset).
+		Str("trace_id", span.SpanContext().TraceID().String()).
 		Msg("Received message")
 
 	// Get event type from headers
 	eventType := ""
+	eventID := ""
 	for _, header := range message.Headers {
 		if string(header.Key) == "event_type" {
 			eventType = string(header.Value)
-			break
+		}
+		if string(header.Key) == "event_id" {
+			eventID = string(header.Value)
 		}
 	}
 
 	if eventType == "" {
+		span.SetStatus(codes.Error, "Message without event_type header")
 		logger.Logger.Warn().Msg("Message without event_type header")
 		return
 	}
+
+	span.SetAttributes(
+		attribute.String("event.type", eventType),
+		attribute.String("event.id", eventID),
+	)
 
 	// Get handler for event type
 	h.consumer.handlersMutex.RLock()
@@ -156,6 +199,7 @@ func (h *consumerGroupHandler) handleMessage(ctx context.Context, message *saram
 	h.consumer.handlersMutex.RUnlock()
 
 	if !exists {
+		span.SetStatus(codes.Error, "No handler registered")
 		logger.Logger.Warn().
 			Str("event_type", eventType).
 			Msg("No handler registered for event type")
@@ -167,6 +211,8 @@ func (h *consumerGroupHandler) handleMessage(ctx context.Context, message *saram
 	case EventTypeProductPurchased:
 		var event ProductPurchasedEvent
 		if err := json.Unmarshal(message.Value, &event); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "Failed to unmarshal event")
 			logger.Logger.Error().
 				Err(err).
 				Str("event_type", eventType).
@@ -174,24 +220,36 @@ func (h *consumerGroupHandler) handleMessage(ctx context.Context, message *saram
 			return
 		}
 
+		span.SetAttributes(
+			attribute.Int64("product.id", int64(event.ProductID)),
+			attribute.Int("product.quantity", int(event.Quantity)),
+			attribute.Int64("payment.id", int64(event.PaymentID)),
+		)
+
 		// Handle event
 		if err := handler(ctx, event); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "Failed to handle event")
 			logger.Logger.Error().
 				Err(err).
 				Str("event_type", eventType).
 				Str("event_id", event.EventID).
+				Str("trace_id", span.SpanContext().TraceID().String()).
 				Msg("Failed to handle event")
 			return
 		}
 
+		span.SetStatus(codes.Ok, "Event handled successfully")
 		logger.Logger.Info().
 			Str("event_type", eventType).
 			Str("event_id", event.EventID).
 			Uint("product_id", event.ProductID).
 			Int32("quantity", event.Quantity).
+			Str("trace_id", span.SpanContext().TraceID().String()).
 			Msg("Event handled successfully")
 
 	default:
+		span.SetStatus(codes.Error, "Unknown event type")
 		logger.Logger.Warn().
 			Str("event_type", eventType).
 			Msg("Unknown event type")
