@@ -25,12 +25,13 @@ type PaymentHandler struct {
 	listHandler      *query.ListPaymentsHandler
 	getMyHandler     *query.GetMyPaymentsHandler
 
-	repo       domain.PaymentRepository
-	userClient *client.UserServiceClient
+	repo          domain.PaymentRepository
+	userClient    *client.UserServiceClient
+	productClient *client.ProductServiceClient
 }
 
 // NewPaymentHandler creates a new payment handler (manual DI)
-func NewPaymentHandler(repo domain.PaymentRepository, userClient *client.UserServiceClient) *PaymentHandler {
+func NewPaymentHandler(repo domain.PaymentRepository, userClient *client.UserServiceClient, productClient *client.ProductServiceClient) *PaymentHandler {
 	return &PaymentHandler{
 		createHandler:       command.NewCreatePaymentHandler(repo),
 		updateStatusHandler: command.NewUpdateStatusHandler(repo),
@@ -39,6 +40,7 @@ func NewPaymentHandler(repo domain.PaymentRepository, userClient *client.UserSer
 		getMyHandler:        query.NewGetMyPaymentsHandler(repo),
 		repo:                repo,
 		userClient:          userClient,
+		productClient:       productClient,
 	}
 }
 
@@ -51,6 +53,7 @@ func NewPaymentHandlerWithDI(
 	getMyHandler *query.GetMyPaymentsHandler,
 	repo domain.PaymentRepository,
 	userClient *client.UserServiceClient,
+	productClient *client.ProductServiceClient,
 ) *PaymentHandler {
 	return &PaymentHandler{
 		createHandler:       createHandler,
@@ -60,6 +63,7 @@ func NewPaymentHandlerWithDI(
 		getMyHandler:        getMyHandler,
 		repo:                repo,
 		userClient:          userClient,
+		productClient:       productClient,
 	}
 }
 

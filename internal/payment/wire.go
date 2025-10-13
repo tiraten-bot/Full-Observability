@@ -15,6 +15,12 @@ import (
 	"github.com/tair/full-observability/internal/payment/usecase/query"
 )
 
+// ServiceAddrs holds service addresses for dependency injection
+type ServiceAddrs struct {
+	UserServiceAddr    string
+	ProductServiceAddr string
+}
+
 // ProvidePaymentRepository provides the payment repository
 func ProvidePaymentRepository(db *gorm.DB) domain.PaymentRepository {
 	return repository.NewGormPaymentRepository(db)
@@ -43,8 +49,13 @@ func ProvideGetMyPaymentsHandler(repo domain.PaymentRepository) *query.GetMyPaym
 }
 
 // ProvideUserServiceClient provides the user service gRPC client
-func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
-	return client.NewUserServiceClient(userServiceAddr)
+func ProvideUserServiceClient(addrs ServiceAddrs) (*client.UserServiceClient, error) {
+	return client.NewUserServiceClient(addrs.UserServiceAddr)
+}
+
+// ProvideProductServiceClient provides the product service gRPC client
+func ProvideProductServiceClient(addrs ServiceAddrs) (*client.ProductServiceClient, error) {
+	return client.NewProductServiceClient(addrs.ProductServiceAddr)
 }
 
 // Wire sets
@@ -70,10 +81,11 @@ var AllHandlersSet = wire.NewSet(
 )
 
 // InitializeHandler initializes payment handler with all dependencies
-func InitializeHandler(db *gorm.DB, userServiceAddr string) (*handler.PaymentHandler, error) {
+func InitializeHandler(db *gorm.DB, addrs ServiceAddrs) (*handler.PaymentHandler, error) {
 	wire.Build(
 		AllHandlersSet,
 		ProvideUserServiceClient,
+		ProvideProductServiceClient,
 		handler.NewPaymentHandlerWithDI,
 	)
 	return nil, nil

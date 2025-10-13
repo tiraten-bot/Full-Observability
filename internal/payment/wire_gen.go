@@ -20,22 +20,32 @@ import (
 // Injectors from wire.go:
 
 // InitializeHandler initializes payment handler with all dependencies
-func InitializeHandler(db *gorm.DB, userServiceAddr string) (*handler.PaymentHandler, error) {
+func InitializeHandler(db *gorm.DB, addrs ServiceAddrs) (*handler.PaymentHandler, error) {
 	paymentRepository := ProvidePaymentRepository(db)
 	createPaymentHandler := ProvideCreatePaymentHandler(paymentRepository)
 	updateStatusHandler := ProvideUpdateStatusHandler(paymentRepository)
 	getPaymentHandler := ProvideGetPaymentHandler(paymentRepository)
 	listPaymentsHandler := ProvideListPaymentsHandler(paymentRepository)
 	getMyPaymentsHandler := ProvideGetMyPaymentsHandler(paymentRepository)
-	userServiceClient, err := ProvideUserServiceClient(userServiceAddr)
+	userServiceClient, err := ProvideUserServiceClient(addrs)
 	if err != nil {
 		return nil, err
 	}
-	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, getMyPaymentsHandler, paymentRepository, userServiceClient)
+	productServiceClient, err := ProvideProductServiceClient(addrs)
+	if err != nil {
+		return nil, err
+	}
+	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, getMyPaymentsHandler, paymentRepository, userServiceClient, productServiceClient)
 	return paymentHandler, nil
 }
 
 // wire.go:
+
+// ServiceAddrs holds service addresses for dependency injection
+type ServiceAddrs struct {
+	UserServiceAddr    string
+	ProductServiceAddr string
+}
 
 // ProvidePaymentRepository provides the payment repository
 func ProvidePaymentRepository(db *gorm.DB) domain.PaymentRepository {
@@ -65,8 +75,13 @@ func ProvideGetMyPaymentsHandler(repo domain.PaymentRepository) *query.GetMyPaym
 }
 
 // ProvideUserServiceClient provides the user service gRPC client
-func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
-	return client.NewUserServiceClient(userServiceAddr)
+func ProvideUserServiceClient(addrs ServiceAddrs) (*client.UserServiceClient, error) {
+	return client.NewUserServiceClient(addrs.UserServiceAddr)
+}
+
+// ProvideProductServiceClient provides the product service gRPC client
+func ProvideProductServiceClient(addrs ServiceAddrs) (*client.ProductServiceClient, error) {
+	return client.NewProductServiceClient(addrs.ProductServiceAddr)
 }
 
 // Wire sets

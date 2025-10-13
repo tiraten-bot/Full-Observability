@@ -79,18 +79,22 @@ func main() {
 
 	logger.Logger.Info().Msg("Database initialized successfully")
 
-	// Get User Service gRPC address
-	userServiceAddr := getEnv("USER_SERVICE_GRPC_ADDR", "localhost:9090")
+	// Get gRPC service addresses
+	serviceAddrs := payment.ServiceAddrs{
+		UserServiceAddr:    getEnv("USER_SERVICE_GRPC_ADDR", "localhost:9090"),
+		ProductServiceAddr: getEnv("PRODUCT_SERVICE_GRPC_ADDR", "localhost:9091"),
+	}
 
-	// Initialize handler with Wire DI (includes User Service gRPC client)
-	paymentHandler, err := payment.InitializeHandler(db, userServiceAddr)
+	// Initialize handler with Wire DI (includes User & Product Service gRPC clients)
+	paymentHandler, err := payment.InitializeHandler(db, serviceAddrs)
 	if err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to initialize handler")
 	}
 
 	logger.Logger.Info().
-		Str("user_service_grpc", userServiceAddr).
-		Msg("Payment handler initialized with User Service client")
+		Str("user_service_grpc", serviceAddrs.UserServiceAddr).
+		Str("product_service_grpc", serviceAddrs.ProductServiceAddr).
+		Msg("Payment handler initialized with User & Product Service clients")
 
 	// Start HTTP server
 	httpPort := getEnv("HTTP_PORT", "8083")
