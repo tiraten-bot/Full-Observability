@@ -9,6 +9,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
 	pb "github.com/tair/full-observability/api/proto/user"
 	"github.com/tair/full-observability/pkg/logger"
 )
@@ -27,6 +29,7 @@ func NewUserServiceClient(address string) (*UserServiceClient, error) {
 
 	conn, err := grpc.DialContext(ctx, address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithBlock(),
 	)
 	if err != nil {

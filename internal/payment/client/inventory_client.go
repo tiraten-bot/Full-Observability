@@ -8,6 +8,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
 	pb "github.com/tair/full-observability/api/proto/inventory"
 	"github.com/tair/full-observability/pkg/logger"
 )
@@ -26,6 +28,7 @@ func NewInventoryServiceClient(address string) (*InventoryServiceClient, error) 
 
 	conn, err := grpc.DialContext(ctx, address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithBlock(),
 	)
 	if err != nil {
