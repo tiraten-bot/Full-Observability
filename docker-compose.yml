@@ -165,6 +165,29 @@ services:
       - observability-network
     restart: unless-stopped
 
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: dockerfiles/gateway.Dockerfile
+    container_name: api-gateway
+    environment:
+      GATEWAY_PORT: 8000
+      USER_SERVICE_URL: http://user-service:8080
+      PRODUCT_SERVICE_URL: http://product-service:8081
+      INVENTORY_SERVICE_URL: http://inventory-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8083
+    ports:
+      - "8000:8000"  # API Gateway
+    depends_on:
+      - user-service
+      - product-service
+      - inventory-service
+      - payment-service
+    networks:
+      - observability-network
+    restart: unless-stopped
+
   # Zookeeper (required for Kafka)
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
