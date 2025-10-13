@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -9,8 +10,11 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"google.golang.org/grpc"
 
+	pb "github.com/tair/full-observability/api/proto/inventory"
 	"github.com/tair/full-observability/internal/inventory"
+	grpcDelivery "github.com/tair/full-observability/internal/inventory/delivery/grpc"
 	httpDelivery "github.com/tair/full-observability/internal/inventory/delivery/http"
 	"github.com/tair/full-observability/internal/inventory/domain"
 	"github.com/tair/full-observability/pkg/database"
@@ -74,16 +78,28 @@ func main() {
 		Str("user_service_grpc", userServiceAddr).
 		Msg("Inventory handler initialized with User Service client")
 
-	// Start HTTP server
+	// Initialize gRPC server with Wire DI
+	grpcServer, err := inventory.InitializeGRPCServer(db)
+	if err != nil {
+		logger.Logger.Fatal().Err(err).Msg("Failed to initialize gRPC server")
+	}
+
+	logger.Logger.Info().Msg("gRPC server initialized")
+
+	// Start gRPC server in goroutine
+	grpcPort := getEnv("GRPC_PORT", "9092")
+	go startGRPCServer(grpcServer, grpcPort)
+
+	// Start HTTP server in goroutine
 	httpPort := getEnv("HTTP_PORT", "8082")
-	startHTTPServer(handler, sqlDB, httpPort)
+	go startHTTPServer(handler, sqlDB, httpPort)
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Logger.Info().Msg("Shutting down server...")
+	logger.Logger.Info().Msg("Shutting down servers...")
 }
 
 func startHTTPServer(handler *httpDelivery.InventoryHandler, db *sql.DB, port string) {
@@ -106,6 +122,24 @@ func startHTTPServer(handler *httpDelivery.InventoryHandler, db *sql.DB, port st
 
 	if err := http.ListenAndServe(":"+port, router); err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to start HTTP server")
+	}
+}
+
+func startGRPCServer(inventoryServer *grpcDelivery.InventoryGRPCServer, port string) {
+	lis, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		logger.Logger.Fatal().Err(err).Msg("Failed to listen for gRPC")
+	}
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterInventoryServiceServer(grpcServer, inventoryServer)
+
+	logger.Logger.Info().
+		Str("port", port).
+		Msg("gRPC server started")
+
+	if err := grpcServer.Serve(lis); err != nil {
+		logger.Logger.Fatal().Err(err).Msg("Failed to serve gRPC")
 	}
 }
 

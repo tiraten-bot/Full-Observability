@@ -9,6 +9,7 @@ package inventory
 import (
 	"github.com/google/wire"
 	"github.com/tair/full-observability/internal/inventory/client"
+	"github.com/tair/full-observability/internal/inventory/delivery/grpc"
 	"github.com/tair/full-observability/internal/inventory/delivery/http"
 	"github.com/tair/full-observability/internal/inventory/domain"
 	"github.com/tair/full-observability/internal/inventory/repository"
@@ -33,6 +34,18 @@ func InitializeHTTPHandler(db *gorm.DB, userServiceAddr string) (*http.Inventory
 	}
 	inventoryHandler := http.NewInventoryHandlerWithDI(createInventoryHandler, updateQuantityHandler, deleteInventoryHandler, getInventoryHandler, listInventoryHandler, inventoryRepository, userServiceClient)
 	return inventoryHandler, nil
+}
+
+// InitializeGRPCServer initializes gRPC server with all dependencies
+func InitializeGRPCServer(db *gorm.DB) (*grpc.InventoryGRPCServer, error) {
+	inventoryRepository := ProvideInventoryRepository(db)
+	createInventoryHandler := ProvideCreateInventoryHandler(inventoryRepository)
+	updateQuantityHandler := ProvideUpdateQuantityHandler(inventoryRepository)
+	deleteInventoryHandler := ProvideDeleteInventoryHandler(inventoryRepository)
+	getInventoryHandler := ProvideGetInventoryHandler(inventoryRepository)
+	listInventoryHandler := ProvideListInventoryHandler(inventoryRepository)
+	inventoryGRPCServer := grpc.NewInventoryGRPCServer(createInventoryHandler, updateQuantityHandler, deleteInventoryHandler, getInventoryHandler, listInventoryHandler, inventoryRepository)
+	return inventoryGRPCServer, nil
 }
 
 // wire.go:

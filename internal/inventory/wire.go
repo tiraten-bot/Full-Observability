@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/tair/full-observability/internal/inventory/client"
+	grpcDelivery "github.com/tair/full-observability/internal/inventory/delivery/grpc"
 	"github.com/tair/full-observability/internal/inventory/delivery/http"
 	"github.com/tair/full-observability/internal/inventory/domain"
 	"github.com/tair/full-observability/internal/inventory/repository"
@@ -75,6 +76,15 @@ func InitializeHTTPHandler(db *gorm.DB, userServiceAddr string) (*http.Inventory
 		AllHandlersSet,
 		ProvideUserServiceClient,
 		http.NewInventoryHandlerWithDI,
+	)
+	return nil, nil
+}
+
+// InitializeGRPCServer initializes gRPC server with all dependencies
+func InitializeGRPCServer(db *gorm.DB) (*grpcDelivery.InventoryGRPCServer, error) {
+	wire.Build(
+		AllHandlersSet,
+		grpcDelivery.NewInventoryGRPCServer,
 	)
 	return nil, nil
 }
