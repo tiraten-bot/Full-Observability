@@ -118,6 +118,32 @@ services:
       - observability-network
     restart: unless-stopped
 
+  # Payment Service
+  payment-service:
+    build:
+      context: .
+      dockerfile: dockerfiles/payment.Dockerfile
+    container_name: payment-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: paymentdb
+      DB_SSLMODE: disable
+      HTTP_PORT: 8083
+      OTEL_SERVICE_NAME: payment-service
+      ENVIRONMENT: production
+      LOG_LEVEL: info
+    ports:
+      - "8083:8083"  # HTTP
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - observability-network
+    restart: unless-stopped
+
   # Prometheus
   prometheus:
     image: prom/prometheus:latest

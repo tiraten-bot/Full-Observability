@@ -56,3 +56,13 @@ scrape_configs:
           environment: 'development'
     metrics_path: '/metrics'
 
+  # Payment Service
+  - job_name: 'payment-service'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['payment-service:8083']
+        labels:
+          service: 'payment-service'
+          environment: 'development'
+    metrics_path: '/metrics'
+

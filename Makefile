@@ -14,6 +14,7 @@ help:
 	@echo "  run-user       - Run user service locally"
 	@echo "  run-product    - Run product service locally"
 	@echo "  run-inventory  - Run inventory service locally"
+	@echo "  run-payment    - Run payment service locally"
 
 # Install protoc plugins
 proto-install:
@@ -90,4 +91,7 @@ run-product:
 
 run-inventory:
 	go run cmd/inventory/main.go
+
+run-payment:
+	go run cmd/payment/main.go
 
