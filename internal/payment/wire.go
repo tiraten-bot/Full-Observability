@@ -38,6 +38,10 @@ func ProvideListPaymentsHandler(repo domain.PaymentRepository) *query.ListPaymen
 	return query.NewListPaymentsHandler(repo)
 }
 
+func ProvideGetMyPaymentsHandler(repo domain.PaymentRepository) *query.GetMyPaymentsHandler {
+	return query.NewGetMyPaymentsHandler(repo)
+}
+
 // ProvideUserServiceClient provides the user service gRPC client
 func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
 	return client.NewUserServiceClient(userServiceAddr)
@@ -56,6 +60,7 @@ var CommandHandlerSet = wire.NewSet(
 var QueryHandlerSet = wire.NewSet(
 	ProvideGetPaymentHandler,
 	ProvideListPaymentsHandler,
+	ProvideGetMyPaymentsHandler,
 )
 
 var AllHandlersSet = wire.NewSet(

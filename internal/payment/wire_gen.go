@@ -26,11 +26,12 @@ func InitializeHandler(db *gorm.DB, userServiceAddr string) (*handler.PaymentHan
 	updateStatusHandler := ProvideUpdateStatusHandler(paymentRepository)
 	getPaymentHandler := ProvideGetPaymentHandler(paymentRepository)
 	listPaymentsHandler := ProvideListPaymentsHandler(paymentRepository)
+	getMyPaymentsHandler := ProvideGetMyPaymentsHandler(paymentRepository)
 	userServiceClient, err := ProvideUserServiceClient(userServiceAddr)
 	if err != nil {
 		return nil, err
 	}
-	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, paymentRepository, userServiceClient)
+	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, getMyPaymentsHandler, paymentRepository, userServiceClient)
 	return paymentHandler, nil
 }
 
@@ -59,6 +60,10 @@ func ProvideListPaymentsHandler(repo domain.PaymentRepository) *query.ListPaymen
 	return query.NewListPaymentsHandler(repo)
 }
 
+func ProvideGetMyPaymentsHandler(repo domain.PaymentRepository) *query.GetMyPaymentsHandler {
+	return query.NewGetMyPaymentsHandler(repo)
+}
+
 // ProvideUserServiceClient provides the user service gRPC client
 func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
 	return client.NewUserServiceClient(userServiceAddr)
@@ -77,6 +82,7 @@ var CommandHandlerSet = wire.NewSet(
 var QueryHandlerSet = wire.NewSet(
 	ProvideGetPaymentHandler,
 	ProvideListPaymentsHandler,
+	ProvideGetMyPaymentsHandler,
 )
 
 var AllHandlersSet = wire.NewSet(

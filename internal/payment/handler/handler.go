@@ -21,8 +21,9 @@ type PaymentHandler struct {
 	updateStatusHandler *command.UpdateStatusHandler
 
 	// Query handlers
-	getHandler  *query.GetPaymentHandler
-	listHandler *query.ListPaymentsHandler
+	getHandler       *query.GetPaymentHandler
+	listHandler      *query.ListPaymentsHandler
+	getMyHandler     *query.GetMyPaymentsHandler
 
 	repo       domain.PaymentRepository
 	userClient *client.UserServiceClient
@@ -35,6 +36,7 @@ func NewPaymentHandler(repo domain.PaymentRepository, userClient *client.UserSer
 		updateStatusHandler: command.NewUpdateStatusHandler(repo),
 		getHandler:          query.NewGetPaymentHandler(repo),
 		listHandler:         query.NewListPaymentsHandler(repo),
+		getMyHandler:        query.NewGetMyPaymentsHandler(repo),
 		repo:                repo,
 		userClient:          userClient,
 	}
@@ -46,6 +48,7 @@ func NewPaymentHandlerWithDI(
 	updateStatusHandler *command.UpdateStatusHandler,
 	getHandler *query.GetPaymentHandler,
 	listHandler *query.ListPaymentsHandler,
+	getMyHandler *query.GetMyPaymentsHandler,
 	repo domain.PaymentRepository,
 	userClient *client.UserServiceClient,
 ) *PaymentHandler {
@@ -54,6 +57,7 @@ func NewPaymentHandlerWithDI(
 		updateStatusHandler: updateStatusHandler,
 		getHandler:          getHandler,
 		listHandler:         listHandler,
+		getMyHandler:        getMyHandler,
 		repo:                repo,
 		userClient:          userClient,
 	}
@@ -222,11 +226,13 @@ func (h *PaymentHandler) GetMyPayments(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
-	if limit == 0 {
-		limit = 10
+	q := query.GetMyPaymentsQuery{
+		UserID: userID,
+		Limit:  limit,
+		Offset: offset,
 	}
 
-	payments, err := h.repo.FindByUserID(userID, limit, offset)
+	payments, err := h.getMyHandler.Handle(q)
 	if err != nil {
 		logger.Logger.Error().Err(err).Msg("Failed to get user payments")
 		respondJSON(w, http.StatusInternalServerError, Response{
