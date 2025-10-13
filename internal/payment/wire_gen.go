@@ -14,13 +14,14 @@ import (
 	"github.com/tair/full-observability/internal/payment/repository"
 	"github.com/tair/full-observability/internal/payment/usecase/command"
 	"github.com/tair/full-observability/internal/payment/usecase/query"
+	"github.com/tair/full-observability/kafka"
 	"gorm.io/gorm"
 )
 
 // Injectors from wire.go:
 
 // InitializeHandler initializes payment handler with all dependencies
-func InitializeHandler(db *gorm.DB, addrs ServiceAddrs) (*handler.PaymentHandler, error) {
+func InitializeHandler(db *gorm.DB, addrs ServiceAddrs, kafkaBrokers []string) (*handler.PaymentHandler, error) {
 	paymentRepository := ProvidePaymentRepository(db)
 	createPaymentHandler := ProvideCreatePaymentHandler(paymentRepository)
 	updateStatusHandler := ProvideUpdateStatusHandler(paymentRepository)
@@ -39,7 +40,11 @@ func InitializeHandler(db *gorm.DB, addrs ServiceAddrs) (*handler.PaymentHandler
 	if err != nil {
 		return nil, err
 	}
-	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, getMyPaymentsHandler, paymentRepository, userServiceClient, productServiceClient, inventoryServiceClient)
+	publisher, err := ProvideKafkaPublisher(kafkaBrokers)
+	if err != nil {
+		return nil, err
+	}
+	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, getMyPaymentsHandler, paymentRepository, userServiceClient, productServiceClient, inventoryServiceClient, publisher)
 	return paymentHandler, nil
 }
 
@@ -92,6 +97,11 @@ func ProvideProductServiceClient(addrs ServiceAddrs) (*client.ProductServiceClie
 // ProvideInventoryServiceClient provides the inventory service gRPC client
 func ProvideInventoryServiceClient(addrs ServiceAddrs) (*client.InventoryServiceClient, error) {
 	return client.NewInventoryServiceClient(addrs.InventoryServiceAddr)
+}
+
+// ProvideKafkaPublisher provides the Kafka publisher
+func ProvideKafkaPublisher(kafkaBrokers []string) (*kafka.Publisher, error) {
+	return kafka.NewPublisher(kafkaBrokers)
 }
 
 // Wire sets
