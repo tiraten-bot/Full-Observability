@@ -13,6 +13,7 @@ import (
 	"github.com/tair/full-observability/internal/payment/repository"
 	"github.com/tair/full-observability/internal/payment/usecase/command"
 	"github.com/tair/full-observability/internal/payment/usecase/query"
+	"github.com/tair/full-observability/kafka"
 )
 
 // ServiceAddrs holds service addresses for dependency injection
@@ -64,6 +65,11 @@ func ProvideInventoryServiceClient(addrs ServiceAddrs) (*client.InventoryService
 	return client.NewInventoryServiceClient(addrs.InventoryServiceAddr)
 }
 
+// ProvideKafkaPublisher provides the Kafka publisher
+func ProvideKafkaPublisher(kafkaBrokers []string) (*kafka.Publisher, error) {
+	return kafka.NewPublisher(kafkaBrokers)
+}
+
 // Wire sets
 var RepositorySet = wire.NewSet(
 	ProvidePaymentRepository,
@@ -87,12 +93,13 @@ var AllHandlersSet = wire.NewSet(
 )
 
 // InitializeHandler initializes payment handler with all dependencies
-func InitializeHandler(db *gorm.DB, addrs ServiceAddrs) (*handler.PaymentHandler, error) {
+func InitializeHandler(db *gorm.DB, addrs ServiceAddrs, kafkaBrokers []string) (*handler.PaymentHandler, error) {
 	wire.Build(
 		AllHandlersSet,
 		ProvideUserServiceClient,
 		ProvideProductServiceClient,
 		ProvideInventoryServiceClient,
+		ProvideKafkaPublisher,
 		handler.NewPaymentHandlerWithDI,
 	)
 	return nil, nil

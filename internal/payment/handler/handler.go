@@ -11,6 +11,7 @@ import (
 	"github.com/tair/full-observability/internal/payment/domain"
 	"github.com/tair/full-observability/internal/payment/usecase/command"
 	"github.com/tair/full-observability/internal/payment/usecase/query"
+	"github.com/tair/full-observability/kafka"
 	"github.com/tair/full-observability/pkg/logger"
 )
 
@@ -29,6 +30,7 @@ type PaymentHandler struct {
 	userClient       *client.UserServiceClient
 	productClient    *client.ProductServiceClient
 	inventoryClient  *client.InventoryServiceClient
+	kafkaPublisher   *kafka.Publisher
 }
 
 // NewPaymentHandler creates a new payment handler (manual DI)
@@ -57,6 +59,7 @@ func NewPaymentHandlerWithDI(
 	userClient *client.UserServiceClient,
 	productClient *client.ProductServiceClient,
 	inventoryClient *client.InventoryServiceClient,
+	kafkaPublisher *kafka.Publisher,
 ) *PaymentHandler {
 	return &PaymentHandler{
 		createHandler:       createHandler,
@@ -68,6 +71,7 @@ func NewPaymentHandlerWithDI(
 		userClient:          userClient,
 		productClient:       productClient,
 		inventoryClient:     inventoryClient,
+		kafkaPublisher:      kafkaPublisher,
 	}
 }
 
@@ -171,13 +175,33 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Optional: Reserve stock after successful payment creation
-	// This would be part of a saga pattern in a real system
-	// reservationID := fmt.Sprintf("payment-%d", payment.ID)
-	// success, msg, err := h.inventoryClient.ReserveStock(ctx, req.ProductID, req.Quantity, reservationID)
-	// if err != nil || !success {
-	//     logger.Logger.Warn().Err(err).Str("message", msg).Msg("Failed to reserve stock")
-	// }
+	// Publish product purchased event to Kafka
+	if h.kafkaPublisher != nil {
+		event := kafka.ProductPurchasedEvent{
+			PaymentID:     payment.ID,
+			ProductID:     req.ProductID,
+			Quantity:      req.Quantity,
+			UserID:        req.UserID,
+			Amount:        req.Amount,
+			Currency:      req.Currency,
+			PaymentMethod: req.PaymentMethod,
+		}
+
+		if err := h.kafkaPublisher.PublishProductPurchased(event); err != nil {
+			logger.Logger.Error().
+				Err(err).
+				Uint("payment_id", payment.ID).
+				Uint("product_id", req.ProductID).
+				Msg("Failed to publish product purchased event")
+			// Don't fail the payment, just log the error
+		} else {
+			logger.Logger.Info().
+				Uint("payment_id", payment.ID).
+				Uint("product_id", req.ProductID).
+				Int32("quantity", req.Quantity).
+				Msg("Product purchased event published successfully")
+		}
+	}
 
 	respondJSON(w, http.StatusCreated, Response{
 		Success: true,

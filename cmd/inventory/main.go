@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/gorilla/mux"
@@ -17,6 +19,7 @@ import (
 	grpcDelivery "github.com/tair/full-observability/internal/inventory/delivery/grpc"
 	httpDelivery "github.com/tair/full-observability/internal/inventory/delivery/http"
 	"github.com/tair/full-observability/internal/inventory/domain"
+	"github.com/tair/full-observability/kafka"
 	"github.com/tair/full-observability/pkg/database"
 	"github.com/tair/full-observability/pkg/logger"
 )
@@ -86,6 +89,72 @@ func main() {
 
 	logger.Logger.Info().Msg("gRPC server initialized")
 
+	// Initialize Kafka consumer
+	kafkaBrokersStr := getEnv("KAFKA_BROKERS", "localhost:9092")
+	kafkaBrokers := strings.Split(kafkaBrokersStr, ",")
+	kafkaConsumer, err := kafka.NewConsumer(kafkaBrokers, "inventory-service-group", []string{kafka.TopicProductPurchased})
+	if err != nil {
+		logger.Logger.Fatal().Err(err).Msg("Failed to initialize Kafka consumer")
+	}
+	defer kafkaConsumer.Close()
+
+	// Register event handler for product purchased events
+	repo := grpcServer.GetRepository()
+	kafkaConsumer.RegisterHandler(kafka.EventTypeProductPurchased, func(ctx context.Context, event kafka.ProductPurchasedEvent) error {
+		logger.Logger.Info().
+			Uint("product_id", event.ProductID).
+			Int32("quantity", event.Quantity).
+			Uint("payment_id", event.PaymentID).
+			Msg("Processing product purchased event")
+
+		// Get current inventory
+		inv, err := repo.FindByProductID(event.ProductID)
+		if err != nil {
+			logger.Logger.Error().
+				Err(err).
+				Uint("product_id", event.ProductID).
+				Msg("Failed to find inventory")
+			return err
+		}
+
+		// Decrease stock
+		newQuantity := inv.Quantity - int(event.Quantity)
+		if newQuantity < 0 {
+			newQuantity = 0
+		}
+
+		if err := repo.UpdateQuantity(event.ProductID, newQuantity); err != nil {
+			logger.Logger.Error().
+				Err(err).
+				Uint("product_id", event.ProductID).
+				Int("new_quantity", newQuantity).
+				Msg("Failed to update inventory quantity")
+			return err
+		}
+
+		logger.Logger.Info().
+			Uint("product_id", event.ProductID).
+			Int("old_quantity", inv.Quantity).
+			Int("new_quantity", newQuantity).
+			Int32("purchased", event.Quantity).
+			Msg("Inventory updated successfully")
+
+		return nil
+	})
+
+	// Start Kafka consumer
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := kafkaConsumer.Start(ctx); err != nil {
+		logger.Logger.Fatal().Err(err).Msg("Failed to start Kafka consumer")
+	}
+
+	logger.Logger.Info().
+		Strs("kafka_brokers", kafkaBrokers).
+		Str("topic", kafka.TopicProductPurchased).
+		Msg("Kafka consumer started")
+
 	// Start gRPC server in goroutine
 	grpcPort := getEnv("GRPC_PORT", "9092")
 	go startGRPCServer(grpcServer, grpcPort)
@@ -100,6 +169,7 @@ func main() {
 	<-quit
 
 	logger.Logger.Info().Msg("Shutting down servers...")
+	cancel() // Stop Kafka consumer
 }
 
 func startHTTPServer(handler *httpDelivery.InventoryHandler, db *sql.DB, port string) {

@@ -86,8 +86,11 @@ func main() {
 		InventoryServiceAddr: getEnv("INVENTORY_SERVICE_GRPC_ADDR", "localhost:9092"),
 	}
 
-	// Initialize handler with Wire DI (includes User, Product & Inventory Service gRPC clients)
-	paymentHandler, err := payment.InitializeHandler(db, serviceAddrs)
+	// Get Kafka brokers
+	kafkaBrokers := []string{getEnv("KAFKA_BROKERS", "localhost:9092")}
+
+	// Initialize handler with Wire DI (includes gRPC clients & Kafka)
+	paymentHandler, err := payment.InitializeHandler(db, serviceAddrs, kafkaBrokers)
 	if err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to initialize handler")
 	}
@@ -96,7 +99,8 @@ func main() {
 		Str("user_service_grpc", serviceAddrs.UserServiceAddr).
 		Str("product_service_grpc", serviceAddrs.ProductServiceAddr).
 		Str("inventory_service_grpc", serviceAddrs.InventoryServiceAddr).
-		Msg("Payment handler initialized with User, Product & Inventory Service clients")
+		Strs("kafka_brokers", kafkaBrokers).
+		Msg("Payment handler initialized with gRPC clients & Kafka publisher")
 
 	// Start HTTP server
 	httpPort := getEnv("HTTP_PORT", "8083")

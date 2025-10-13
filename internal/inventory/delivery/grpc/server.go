@@ -50,6 +50,11 @@ func NewInventoryGRPCServer(
 	}
 }
 
+// GetRepository returns the repository (for Kafka consumer)
+func (s *InventoryGRPCServer) GetRepository() domain.InventoryRepository {
+	return s.repo
+}
+
 // CreateInventory creates a new inventory record
 func (s *InventoryGRPCServer) CreateInventory(ctx context.Context, req *pb.CreateInventoryRequest) (*pb.InventoryResponse, error) {
 	logger.Logger.Info().

@@ -105,6 +105,7 @@ services:
       HTTP_PORT: 8082
       GRPC_PORT: 9092
       USER_SERVICE_GRPC_ADDR: user-service:9090
+      KAFKA_BROKERS: kafka:29092
       OTEL_SERVICE_NAME: inventory-service
       ENVIRONMENT: production
       LOG_LEVEL: info
@@ -116,6 +117,8 @@ services:
         condition: service_healthy
       user-service:
         condition: service_started
+      kafka:
+        condition: service_healthy
     networks:
       - observability-network
     restart: unless-stopped
@@ -137,6 +140,7 @@ services:
       USER_SERVICE_GRPC_ADDR: user-service:9090
       PRODUCT_SERVICE_GRPC_ADDR: product-service:9091
       INVENTORY_SERVICE_GRPC_ADDR: inventory-service:9092
+      KAFKA_BROKERS: kafka:29092
       JAEGER_ENDPOINT: http://jaeger:14268/api/traces
       OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
       OTEL_SERVICE_NAME: payment-service
@@ -153,11 +157,51 @@ services:
         condition: service_started
       inventory-service:
         condition: service_started
+      kafka:
+        condition: service_healthy
       jaeger:
         condition: service_started
     networks:
       - observability-network
     restart: unless-stopped
+
+  # Zookeeper (required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - observability-network
+    restart: unless-stopped
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9093:9093"
+    networks:
+      - observability-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:29092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Prometheus
   prometheus:
