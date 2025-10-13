@@ -82,15 +82,18 @@ func main() {
 	logger.Logger.Info().Msg("Shutting down server...")
 }
 
-func startHTTPServer(handler *handler.PaymentHandler, db *sql.DB, port string) {
+func startHTTPServer(paymentHandler *handler.PaymentHandler, db *sql.DB, port string) {
 	// Setup router
 	router := mux.NewRouter()
 
+	// Add middlewares (order matters!)
+	router.Use(handler.LoggingMiddleware) // Logging first
+
 	// Register routes
-	handler.RegisterRoutes(router)
+	paymentHandler.RegisterRoutes(router)
 
 	// Health check endpoint
-	handler.RegisterHealthCheck(router, db)
+	paymentHandler.RegisterHealthCheck(router, db)
 
 	// Prometheus metrics endpoint
 	router.Handle("/metrics", promhttp.Handler())
