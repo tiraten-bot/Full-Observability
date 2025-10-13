@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/tair/full-observability/internal/payment/client"
 	"github.com/tair/full-observability/internal/payment/domain"
 	"github.com/tair/full-observability/internal/payment/usecase/command"
 	"github.com/tair/full-observability/internal/payment/usecase/query"
@@ -23,17 +24,19 @@ type PaymentHandler struct {
 	getHandler  *query.GetPaymentHandler
 	listHandler *query.ListPaymentsHandler
 
-	repo domain.PaymentRepository
+	repo       domain.PaymentRepository
+	userClient *client.UserServiceClient
 }
 
 // NewPaymentHandler creates a new payment handler (manual DI)
-func NewPaymentHandler(repo domain.PaymentRepository) *PaymentHandler {
+func NewPaymentHandler(repo domain.PaymentRepository, userClient *client.UserServiceClient) *PaymentHandler {
 	return &PaymentHandler{
 		createHandler:       command.NewCreatePaymentHandler(repo),
 		updateStatusHandler: command.NewUpdateStatusHandler(repo),
 		getHandler:          query.NewGetPaymentHandler(repo),
 		listHandler:         query.NewListPaymentsHandler(repo),
 		repo:                repo,
+		userClient:          userClient,
 	}
 }
 
@@ -44,6 +47,7 @@ func NewPaymentHandlerWithDI(
 	getHandler *query.GetPaymentHandler,
 	listHandler *query.ListPaymentsHandler,
 	repo domain.PaymentRepository,
+	userClient *client.UserServiceClient,
 ) *PaymentHandler {
 	return &PaymentHandler{
 		createHandler:       createHandler,
@@ -51,6 +55,7 @@ func NewPaymentHandlerWithDI(
 		getHandler:          getHandler,
 		listHandler:         listHandler,
 		repo:                repo,
+		userClient:          userClient,
 	}
 }
 

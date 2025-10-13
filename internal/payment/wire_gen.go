@@ -8,6 +8,7 @@ package payment
 
 import (
 	"github.com/google/wire"
+	"github.com/tair/full-observability/internal/payment/client"
 	"github.com/tair/full-observability/internal/payment/domain"
 	"github.com/tair/full-observability/internal/payment/handler"
 	"github.com/tair/full-observability/internal/payment/repository"
@@ -19,13 +20,17 @@ import (
 // Injectors from wire.go:
 
 // InitializeHandler initializes payment handler with all dependencies
-func InitializeHandler(db *gorm.DB) (*handler.PaymentHandler, error) {
+func InitializeHandler(db *gorm.DB, userServiceAddr string) (*handler.PaymentHandler, error) {
 	paymentRepository := ProvidePaymentRepository(db)
 	createPaymentHandler := ProvideCreatePaymentHandler(paymentRepository)
 	updateStatusHandler := ProvideUpdateStatusHandler(paymentRepository)
 	getPaymentHandler := ProvideGetPaymentHandler(paymentRepository)
 	listPaymentsHandler := ProvideListPaymentsHandler(paymentRepository)
-	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, paymentRepository)
+	userServiceClient, err := ProvideUserServiceClient(userServiceAddr)
+	if err != nil {
+		return nil, err
+	}
+	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, paymentRepository, userServiceClient)
 	return paymentHandler, nil
 }
 
@@ -52,6 +57,11 @@ func ProvideGetPaymentHandler(repo domain.PaymentRepository) *query.GetPaymentHa
 
 func ProvideListPaymentsHandler(repo domain.PaymentRepository) *query.ListPaymentsHandler {
 	return query.NewListPaymentsHandler(repo)
+}
+
+// ProvideUserServiceClient provides the user service gRPC client
+func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
+	return client.NewUserServiceClient(userServiceAddr)
 }
 
 // Wire sets

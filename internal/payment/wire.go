@@ -7,6 +7,7 @@ import (
 	"github.com/google/wire"
 	"gorm.io/gorm"
 
+	"github.com/tair/full-observability/internal/payment/client"
 	"github.com/tair/full-observability/internal/payment/domain"
 	"github.com/tair/full-observability/internal/payment/handler"
 	"github.com/tair/full-observability/internal/payment/repository"
@@ -37,6 +38,11 @@ func ProvideListPaymentsHandler(repo domain.PaymentRepository) *query.ListPaymen
 	return query.NewListPaymentsHandler(repo)
 }
 
+// ProvideUserServiceClient provides the user service gRPC client
+func ProvideUserServiceClient(userServiceAddr string) (*client.UserServiceClient, error) {
+	return client.NewUserServiceClient(userServiceAddr)
+}
+
 // Wire sets
 var RepositorySet = wire.NewSet(
 	ProvidePaymentRepository,
@@ -59,9 +65,10 @@ var AllHandlersSet = wire.NewSet(
 )
 
 // InitializeHandler initializes payment handler with all dependencies
-func InitializeHandler(db *gorm.DB) (*handler.PaymentHandler, error) {
+func InitializeHandler(db *gorm.DB, userServiceAddr string) (*handler.PaymentHandler, error) {
 	wire.Build(
 		AllHandlersSet,
+		ProvideUserServiceClient,
 		handler.NewPaymentHandlerWithDI,
 	)
 	return nil, nil
