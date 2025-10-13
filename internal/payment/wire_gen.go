@@ -35,7 +35,11 @@ func InitializeHandler(db *gorm.DB, addrs ServiceAddrs) (*handler.PaymentHandler
 	if err != nil {
 		return nil, err
 	}
-	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, getMyPaymentsHandler, paymentRepository, userServiceClient, productServiceClient)
+	inventoryServiceClient, err := ProvideInventoryServiceClient(addrs)
+	if err != nil {
+		return nil, err
+	}
+	paymentHandler := handler.NewPaymentHandlerWithDI(createPaymentHandler, updateStatusHandler, getPaymentHandler, listPaymentsHandler, getMyPaymentsHandler, paymentRepository, userServiceClient, productServiceClient, inventoryServiceClient)
 	return paymentHandler, nil
 }
 
@@ -43,8 +47,9 @@ func InitializeHandler(db *gorm.DB, addrs ServiceAddrs) (*handler.PaymentHandler
 
 // ServiceAddrs holds service addresses for dependency injection
 type ServiceAddrs struct {
-	UserServiceAddr    string
-	ProductServiceAddr string
+	UserServiceAddr      string
+	ProductServiceAddr   string
+	InventoryServiceAddr string
 }
 
 // ProvidePaymentRepository provides the payment repository
@@ -82,6 +87,11 @@ func ProvideUserServiceClient(addrs ServiceAddrs) (*client.UserServiceClient, er
 // ProvideProductServiceClient provides the product service gRPC client
 func ProvideProductServiceClient(addrs ServiceAddrs) (*client.ProductServiceClient, error) {
 	return client.NewProductServiceClient(addrs.ProductServiceAddr)
+}
+
+// ProvideInventoryServiceClient provides the inventory service gRPC client
+func ProvideInventoryServiceClient(addrs ServiceAddrs) (*client.InventoryServiceClient, error) {
+	return client.NewInventoryServiceClient(addrs.InventoryServiceAddr)
 }
 
 // Wire sets

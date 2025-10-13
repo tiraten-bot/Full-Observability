@@ -17,8 +17,9 @@ import (
 
 // ServiceAddrs holds service addresses for dependency injection
 type ServiceAddrs struct {
-	UserServiceAddr    string
-	ProductServiceAddr string
+	UserServiceAddr      string
+	ProductServiceAddr   string
+	InventoryServiceAddr string
 }
 
 // ProvidePaymentRepository provides the payment repository
@@ -58,6 +59,11 @@ func ProvideProductServiceClient(addrs ServiceAddrs) (*client.ProductServiceClie
 	return client.NewProductServiceClient(addrs.ProductServiceAddr)
 }
 
+// ProvideInventoryServiceClient provides the inventory service gRPC client
+func ProvideInventoryServiceClient(addrs ServiceAddrs) (*client.InventoryServiceClient, error) {
+	return client.NewInventoryServiceClient(addrs.InventoryServiceAddr)
+}
+
 // Wire sets
 var RepositorySet = wire.NewSet(
 	ProvidePaymentRepository,
@@ -86,6 +92,7 @@ func InitializeHandler(db *gorm.DB, addrs ServiceAddrs) (*handler.PaymentHandler
 		AllHandlersSet,
 		ProvideUserServiceClient,
 		ProvideProductServiceClient,
+		ProvideInventoryServiceClient,
 		handler.NewPaymentHandlerWithDI,
 	)
 	return nil, nil

@@ -136,6 +136,7 @@ services:
       HTTP_PORT: 8083
       USER_SERVICE_GRPC_ADDR: user-service:9090
       PRODUCT_SERVICE_GRPC_ADDR: product-service:9091
+      INVENTORY_SERVICE_GRPC_ADDR: inventory-service:9092
       JAEGER_ENDPOINT: http://jaeger:14268/api/traces
       OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
       OTEL_SERVICE_NAME: payment-service
@@ -149,6 +150,8 @@ services:
       user-service:
         condition: service_started
       product-service:
+        condition: service_started
+      inventory-service:
         condition: service_started
       jaeger:
         condition: service_started

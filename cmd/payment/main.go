@@ -81,11 +81,12 @@ func main() {
 
 	// Get gRPC service addresses
 	serviceAddrs := payment.ServiceAddrs{
-		UserServiceAddr:    getEnv("USER_SERVICE_GRPC_ADDR", "localhost:9090"),
-		ProductServiceAddr: getEnv("PRODUCT_SERVICE_GRPC_ADDR", "localhost:9091"),
+		UserServiceAddr:      getEnv("USER_SERVICE_GRPC_ADDR", "localhost:9090"),
+		ProductServiceAddr:   getEnv("PRODUCT_SERVICE_GRPC_ADDR", "localhost:9091"),
+		InventoryServiceAddr: getEnv("INVENTORY_SERVICE_GRPC_ADDR", "localhost:9092"),
 	}
 
-	// Initialize handler with Wire DI (includes User & Product Service gRPC clients)
+	// Initialize handler with Wire DI (includes User, Product & Inventory Service gRPC clients)
 	paymentHandler, err := payment.InitializeHandler(db, serviceAddrs)
 	if err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to initialize handler")
@@ -94,7 +95,8 @@ func main() {
 	logger.Logger.Info().
 		Str("user_service_grpc", serviceAddrs.UserServiceAddr).
 		Str("product_service_grpc", serviceAddrs.ProductServiceAddr).
-		Msg("Payment handler initialized with User & Product Service clients")
+		Str("inventory_service_grpc", serviceAddrs.InventoryServiceAddr).
+		Msg("Payment handler initialized with User, Product & Inventory Service clients")
 
 	// Start HTTP server
 	httpPort := getEnv("HTTP_PORT", "8083")
