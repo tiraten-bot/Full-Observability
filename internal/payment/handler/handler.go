@@ -251,19 +251,26 @@ func (h *PaymentHandler) GetMyPayments(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetMiddlewareConfig returns middleware configuration
+func (h *PaymentHandler) GetMiddlewareConfig() MiddlewareConfig {
+	return DefaultMiddlewareConfig(h.userClient)
+}
+
 // RegisterRoutes registers all payment routes
 func (h *PaymentHandler) RegisterRoutes(router *mux.Router) {
+	middlewareConfig := h.GetMiddlewareConfig()
+
 	// Public routes (no auth - for demo/testing)
 	// In production, you might want to remove these or make them admin-only
 
 	// Authenticated user routes (any logged-in user)
-	router.HandleFunc("/api/payments/my", AuthMiddleware(h.userClient)(h.GetMyPayments)).Methods("GET")
-	router.HandleFunc("/api/payments", AuthMiddleware(h.userClient)(h.CreatePayment)).Methods("POST")
+	router.HandleFunc("/api/payments/my", middlewareConfig.GetAuthMiddleware()(h.GetMyPayments)).Methods("GET")
+	router.HandleFunc("/api/payments", middlewareConfig.GetAuthMiddleware()(h.CreatePayment)).Methods("POST")
 
 	// Admin routes (require admin role)
-	router.HandleFunc("/api/payments", AdminMiddleware(h.userClient)(h.ListPayments)).Methods("GET")
-	router.HandleFunc("/api/payments/{id}", AdminMiddleware(h.userClient)(h.GetPayment)).Methods("GET")
-	router.HandleFunc("/api/payments/{id}/status", AdminMiddleware(h.userClient)(h.UpdatePaymentStatus)).Methods("PATCH")
+	router.HandleFunc("/api/payments", middlewareConfig.GetAdminMiddleware()(h.ListPayments)).Methods("GET")
+	router.HandleFunc("/api/payments/{id}", middlewareConfig.GetAdminMiddleware()(h.GetPayment)).Methods("GET")
+	router.HandleFunc("/api/payments/{id}/status", middlewareConfig.GetAdminMiddleware()(h.UpdatePaymentStatus)).Methods("PATCH")
 }
 
 // RegisterHealthCheck registers health check endpoint

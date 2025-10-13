@@ -108,11 +108,11 @@ func startHTTPServer(paymentHandler *handler.PaymentHandler, db *sql.DB, port st
 	// Setup router
 	router := mux.NewRouter()
 
-	// Add middlewares (order matters!)
-	router.Use(handler.LoggingMiddleware) // Logging first
-	router.Use(func(next http.Handler) http.Handler {
-		return handler.TracingMiddleware("http-request", next)
-	})
+	// Get middleware configuration
+	middlewareConfig := paymentHandler.GetMiddlewareConfig()
+
+	// Register all middlewares using middleware registration system
+	handler.RegisterMiddlewares(router, middlewareConfig)
 
 	// Register routes
 	paymentHandler.RegisterRoutes(router)
