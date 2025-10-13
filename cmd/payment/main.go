@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -16,6 +18,7 @@ import (
 	"github.com/tair/full-observability/internal/payment/handler"
 	"github.com/tair/full-observability/pkg/database"
 	"github.com/tair/full-observability/pkg/logger"
+	"github.com/tair/full-observability/pkg/tracing"
 )
 
 func main() {
@@ -32,6 +35,20 @@ func main() {
 		Str("environment", getEnv("ENVIRONMENT", "development")).
 		Str("log_level", logLevel).
 		Msg("Starting payment service")
+
+	// Initialize tracer
+	tp, err := tracing.InitTracer(serviceName)
+	if err != nil {
+		logger.Logger.Error().Err(err).Msg("Failed to initialize tracer")
+	} else {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := tracing.Shutdown(ctx, tp); err != nil {
+				logger.Logger.Error().Err(err).Msg("Failed to shutdown tracer")
+			}
+		}()
+	}
 
 	// Load database configuration
 	dbConfig := database.Config{
@@ -88,6 +105,9 @@ func startHTTPServer(paymentHandler *handler.PaymentHandler, db *sql.DB, port st
 
 	// Add middlewares (order matters!)
 	router.Use(handler.LoggingMiddleware) // Logging first
+	router.Use(func(next http.Handler) http.Handler {
+		return handler.TracingMiddleware("http-request", next)
+	})
 
 	// Register routes
 	paymentHandler.RegisterRoutes(router)

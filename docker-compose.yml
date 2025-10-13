@@ -132,6 +132,8 @@ services:
       DB_NAME: paymentdb
       DB_SSLMODE: disable
       HTTP_PORT: 8083
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
       OTEL_SERVICE_NAME: payment-service
       ENVIRONMENT: production
       LOG_LEVEL: info
@@ -140,6 +142,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     networks:
       - observability-network
     restart: unless-stopped
