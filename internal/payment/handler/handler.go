@@ -208,12 +208,56 @@ func (h *PaymentHandler) UpdatePaymentStatus(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// GetMyPayments handles GET /api/payments/my (authenticated user)
+func (h *PaymentHandler) GetMyPayments(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(uint)
+	if !ok {
+		respondJSON(w, http.StatusUnauthorized, Response{
+			Success: false,
+			Error:   "User ID not found in context",
+		})
+		return
+	}
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	if limit == 0 {
+		limit = 10
+	}
+
+	payments, err := h.repo.FindByUserID(userID, limit, offset)
+	if err != nil {
+		logger.Logger.Error().Err(err).Msg("Failed to get user payments")
+		respondJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   "Failed to get payments",
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data: map[string]interface{}{
+			"payments": payments,
+			"total":    len(payments),
+		},
+	})
+}
+
 // RegisterRoutes registers all payment routes
 func (h *PaymentHandler) RegisterRoutes(router *mux.Router) {
-	router.HandleFunc("/api/payments", h.ListPayments).Methods("GET")
-	router.HandleFunc("/api/payments", h.CreatePayment).Methods("POST")
-	router.HandleFunc("/api/payments/{id}", h.GetPayment).Methods("GET")
-	router.HandleFunc("/api/payments/{id}/status", h.UpdatePaymentStatus).Methods("PATCH")
+	// Public routes (no auth - for demo/testing)
+	// In production, you might want to remove these or make them admin-only
+
+	// Authenticated user routes (any logged-in user)
+	router.HandleFunc("/api/payments/my", AuthMiddleware(h.userClient)(h.GetMyPayments)).Methods("GET")
+	router.HandleFunc("/api/payments", AuthMiddleware(h.userClient)(h.CreatePayment)).Methods("POST")
+
+	// Admin routes (require admin role)
+	router.HandleFunc("/api/payments", AdminMiddleware(h.userClient)(h.ListPayments)).Methods("GET")
+	router.HandleFunc("/api/payments/{id}", AdminMiddleware(h.userClient)(h.GetPayment)).Methods("GET")
+	router.HandleFunc("/api/payments/{id}/status", AdminMiddleware(h.userClient)(h.UpdatePaymentStatus)).Methods("PATCH")
 }
 
 // RegisterHealthCheck registers health check endpoint
