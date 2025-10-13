@@ -82,6 +82,8 @@ type Response struct {
 func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UserID        uint    `json:"user_id"`
+		ProductID     uint    `json:"product_id"`
+		Quantity      int32   `json:"quantity"`
 		Amount        float64 `json:"amount"`
 		Currency      string  `json:"currency"`
 		PaymentMethod string  `json:"payment_method"`
@@ -94,6 +96,63 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Validate required fields
+	if req.ProductID == 0 {
+		respondJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Product ID is required",
+		})
+		return
+	}
+
+	if req.Quantity <= 0 {
+		respondJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Quantity must be greater than 0",
+		})
+		return
+	}
+
+	// Check product stock availability via Inventory Service gRPC
+	ctx := r.Context()
+	available, currentStock, message, err := h.inventoryClient.CheckAvailability(ctx, req.ProductID, req.Quantity)
+	if err != nil {
+		logger.Logger.Error().
+			Err(err).
+			Uint("product_id", req.ProductID).
+			Int32("quantity", req.Quantity).
+			Msg("Failed to check product availability")
+		respondJSON(w, http.StatusServiceUnavailable, Response{
+			Success: false,
+			Error:   "Unable to verify product availability. Please try again later.",
+		})
+		return
+	}
+
+	if !available {
+		logger.Logger.Warn().
+			Uint("product_id", req.ProductID).
+			Int32("requested_quantity", req.Quantity).
+			Int32("current_stock", currentStock).
+			Msg("Insufficient stock for payment")
+		respondJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   message,
+			Data: map[string]interface{}{
+				"product_id":     req.ProductID,
+				"requested":      req.Quantity,
+				"available":      currentStock,
+			},
+		})
+		return
+	}
+
+	logger.Logger.Info().
+		Uint("product_id", req.ProductID).
+		Int32("quantity", req.Quantity).
+		Int32("current_stock", currentStock).
+		Msg("Stock validation passed")
 
 	cmd := command.CreatePaymentCommand{
 		UserID:        req.UserID,
@@ -112,10 +171,27 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Optional: Reserve stock after successful payment creation
+	// This would be part of a saga pattern in a real system
+	// reservationID := fmt.Sprintf("payment-%d", payment.ID)
+	// success, msg, err := h.inventoryClient.ReserveStock(ctx, req.ProductID, req.Quantity, reservationID)
+	// if err != nil || !success {
+	//     logger.Logger.Warn().Err(err).Str("message", msg).Msg("Failed to reserve stock")
+	// }
+
 	respondJSON(w, http.StatusCreated, Response{
 		Success: true,
 		Message: "Payment created successfully",
-		Data:    payment,
+		Data: map[string]interface{}{
+			"payment":    payment,
+			"product_id": req.ProductID,
+			"quantity":   req.Quantity,
+			"stock_info": map[string]interface{}{
+				"available":      true,
+				"current_stock":  currentStock,
+				"reserved_stock": req.Quantity,
+			},
+		},
 	})
 }
 
