@@ -9,10 +9,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/cors"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
 
-	_ "github.com/tair/full-observability/cmd/inventory/docs"
 	"github.com/tair/full-observability/internal/inventory"
 	httpDelivery "github.com/tair/full-observability/internal/inventory/delivery/http"
 	"github.com/tair/full-observability/internal/inventory/domain"
@@ -93,12 +90,6 @@ func startHTTPServer(handler *httpDelivery.InventoryHandler, db *sql.DB, port st
 	// Setup router
 	router := mux.NewRouter()
 
-	// Create middleware configuration
-	middlewareConfig := httpDelivery.DefaultMiddlewareConfig(handler.GetUserClient())
-
-	// Register all middlewares using middleware registration system
-	httpDelivery.RegisterMiddlewares(router, middlewareConfig)
-
 	// Register routes
 	handler.RegisterRoutes(router)
 
@@ -108,19 +99,12 @@ func startHTTPServer(handler *httpDelivery.InventoryHandler, db *sql.DB, port st
 	// Prometheus metrics endpoint
 	router.Handle("/metrics", promhttp.Handler())
 
-	// Swagger documentation
-	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
-
-	// Setup CORS using middleware registration system
-	corsHandler := httpDelivery.SetupCORS(middlewareConfig)
-
 	logger.Logger.Info().
 		Str("port", port).
-		Str("swagger_endpoint", "/swagger/").
 		Str("metrics_endpoint", "/metrics").
 		Msg("HTTP server started")
 
-	if err := http.ListenAndServe(":"+port, corsHandler(router)); err != nil {
+	if err := http.ListenAndServe(":"+port, router); err != nil {
 		logger.Logger.Fatal().Err(err).Msg("Failed to start HTTP server")
 	}
 }
