@@ -3,24 +3,38 @@ package handler
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/tair/full-observability/internal/payment/domain"
+	"github.com/tair/full-observability/internal/payment/usecase/command"
+	"github.com/tair/full-observability/internal/payment/usecase/query"
 	"github.com/tair/full-observability/pkg/logger"
 )
 
-// PaymentHandler handles HTTP requests for payments
+// PaymentHandler handles HTTP requests for payments using CQRS pattern
 type PaymentHandler struct {
+	// Command handlers
+	createHandler       *command.CreatePaymentHandler
+	updateStatusHandler *command.UpdateStatusHandler
+
+	// Query handlers
+	getHandler  *query.GetPaymentHandler
+	listHandler *query.ListPaymentsHandler
+
 	repo domain.PaymentRepository
 }
 
 // NewPaymentHandler creates a new payment handler
 func NewPaymentHandler(repo domain.PaymentRepository) *PaymentHandler {
-	return &PaymentHandler{repo: repo}
+	return &PaymentHandler{
+		createHandler:       command.NewCreatePaymentHandler(repo),
+		updateStatusHandler: command.NewUpdateStatusHandler(repo),
+		getHandler:          query.NewGetPaymentHandler(repo),
+		listHandler:         query.NewListPaymentsHandler(repo),
+		repo:                repo,
+	}
 }
 
 type Response struct {
@@ -47,20 +61,15 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate unique order ID
-	orderID := fmt.Sprintf("ORD-%s", uuid.New().String()[:8])
-
-	payment := &domain.Payment{
+	cmd := command.CreatePaymentCommand{
 		UserID:        req.UserID,
-		OrderID:       orderID,
 		Amount:        req.Amount,
 		Currency:      req.Currency,
-		Status:        domain.StatusPending,
 		PaymentMethod: req.PaymentMethod,
-		TransactionID: fmt.Sprintf("TXN-%s", uuid.New().String()[:12]),
 	}
 
-	if err := h.repo.Create(payment); err != nil {
+	payment, err := h.createHandler.Handle(cmd)
+	if err != nil {
 		logger.Logger.Error().Err(err).Msg("Failed to create payment")
 		respondJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -88,7 +97,8 @@ func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payment, err := h.repo.FindByID(uint(id))
+	q := query.GetPaymentQuery{ID: uint(id)}
+	payment, err := h.getHandler.Handle(q)
 	if err != nil {
 		respondJSON(w, http.StatusNotFound, Response{
 			Success: false,
@@ -108,11 +118,12 @@ func (h *PaymentHandler) ListPayments(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
-	if limit == 0 {
-		limit = 10
+	q := query.ListPaymentsQuery{
+		Limit:  limit,
+		Offset: offset,
 	}
 
-	payments, err := h.repo.FindAll(limit, offset)
+	payments, err := h.listHandler.Handle(q)
 	if err != nil {
 		logger.Logger.Error().Err(err).Msg("Failed to list payments")
 		respondJSON(w, http.StatusInternalServerError, Response{
@@ -155,7 +166,12 @@ func (h *PaymentHandler) UpdatePaymentStatus(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := h.repo.UpdateStatus(uint(id), req.Status); err != nil {
+	cmd := command.UpdateStatusCommand{
+		PaymentID: uint(id),
+		Status:    req.Status,
+	}
+
+	if err := h.updateStatusHandler.Handle(cmd); err != nil {
 		logger.Logger.Error().Err(err).Msg("Failed to update payment status")
 		respondJSON(w, http.StatusBadRequest, Response{
 			Success: false,
