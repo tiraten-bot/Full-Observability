@@ -61,6 +61,7 @@ wire:
 	@cd internal/user && go generate
 	@cd internal/product && go generate
 	@cd internal/inventory && go generate
+	@cd internal/payment && go generate
 	@echo "Wire generation complete!"
 
 # Clean generated files
@@ -71,6 +72,7 @@ clean:
 	rm -f internal/user/wire_gen.go
 	rm -f internal/product/wire_gen.go
 	rm -f internal/inventory/wire_gen.go
+	rm -f internal/payment/wire_gen.go
 	rm -rf cmd/user/docs/docs.go cmd/user/docs/swagger.json cmd/user/docs/swagger.yaml
 	rm -rf cmd/product/docs/docs.go cmd/product/docs/swagger.json cmd/product/docs/swagger.yaml
 	rm -rf cmd/inventory/docs/docs.go cmd/inventory/docs/swagger.json cmd/inventory/docs/swagger.yaml

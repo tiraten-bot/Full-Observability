@@ -26,13 +26,30 @@ type PaymentHandler struct {
 	repo domain.PaymentRepository
 }
 
-// NewPaymentHandler creates a new payment handler
+// NewPaymentHandler creates a new payment handler (manual DI)
 func NewPaymentHandler(repo domain.PaymentRepository) *PaymentHandler {
 	return &PaymentHandler{
 		createHandler:       command.NewCreatePaymentHandler(repo),
 		updateStatusHandler: command.NewUpdateStatusHandler(repo),
 		getHandler:          query.NewGetPaymentHandler(repo),
 		listHandler:         query.NewListPaymentsHandler(repo),
+		repo:                repo,
+	}
+}
+
+// NewPaymentHandlerWithDI creates a new payment handler using dependency injection
+func NewPaymentHandlerWithDI(
+	createHandler *command.CreatePaymentHandler,
+	updateStatusHandler *command.UpdateStatusHandler,
+	getHandler *query.GetPaymentHandler,
+	listHandler *query.ListPaymentsHandler,
+	repo domain.PaymentRepository,
+) *PaymentHandler {
+	return &PaymentHandler{
+		createHandler:       createHandler,
+		updateStatusHandler: updateStatusHandler,
+		getHandler:          getHandler,
+		listHandler:         listHandler,
 		repo:                repo,
 	}
 }

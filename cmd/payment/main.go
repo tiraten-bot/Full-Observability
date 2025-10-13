@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 
+	"github.com/tair/full-observability/internal/payment"
 	"github.com/tair/full-observability/internal/payment/domain"
 	"github.com/tair/full-observability/internal/payment/handler"
-	"github.com/tair/full-observability/internal/payment/repository"
 	"github.com/tair/full-observability/pkg/database"
 	"github.com/tair/full-observability/pkg/logger"
 )
@@ -62,9 +62,13 @@ func main() {
 
 	logger.Logger.Info().Msg("Database initialized successfully")
 
-	// Initialize repository and handler
-	repo := repository.NewGormPaymentRepository(db)
-	paymentHandler := handler.NewPaymentHandler(repo)
+	// Initialize handler with Wire DI
+	paymentHandler, err := payment.InitializeHandler(db)
+	if err != nil {
+		logger.Logger.Fatal().Err(err).Msg("Failed to initialize handler")
+	}
+
+	logger.Logger.Info().Msg("Payment handler initialized with Wire DI")
 
 	// Start HTTP server
 	httpPort := getEnv("HTTP_PORT", "8083")
