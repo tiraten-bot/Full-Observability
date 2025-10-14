@@ -1,0 +1,261 @@
+# ==============================================================================
+# DESTINATIONRULE - API GATEWAY
+# ==============================================================================
+# Purpose: Traffic policy for API Gateway
+# Characteristics:
+#   - Entry point for all external traffic
+#   - High traffic volume
+#   - Calls all backend microservices
+#   - Uses Redis for caching/rate-limiting
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: api-gateway-dr
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: api-gateway
+    component: traffic-policy
+spec:
+  host: api-gateway
+  
+  trafficPolicy:
+    # LEAST_REQUEST for best performance under load
+    loadBalancer:
+      simple: LEAST_REQUEST
+      # Warmup period for new pods (gradual traffic increase)
+      warmupDurationSecs: 60s
+    
+    connectionPool:
+      tcp:
+        maxConnections: 500           # High limit (public-facing)
+        connectTimeout: 10s
+      http:
+        http1MaxPendingRequests: 200
+        http2MaxRequests: 500
+        maxRequestsPerConnection: 5
+        maxRetries: 3
+        idleTimeout: 3600s
+    
+    # Gateway circuit breaker - balanced settings
+    outlierDetection:
+      consecutiveGatewayErrors: 5
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+    
+    tls:
+      mode: ISTIO_MUTUAL
+  
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+
+---
+# ==============================================================================
+# DESTINATIONRULE - REDIS
+# ==============================================================================
+# Purpose: Traffic policy for Redis connections
+# Special: Redis uses TCP, not HTTP
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: redis-dr
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: redis
+    component: traffic-policy
+spec:
+  host: redis
+  
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    
+    connectionPool:
+      tcp:
+        maxConnections: 200           # Redis connection pool
+        connectTimeout: 5s            # Fast connect
+        tcpKeepalive:
+          time: 300s
+          interval: 30s
+          probes: 3
+    
+    # Fast circuit breaking for cache
+    outlierDetection:
+      consecutiveGatewayErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+    
+    # No TLS for Redis (internal only)
+    tls:
+      mode: DISABLE
+
+---
+# ==============================================================================
+# DESTINATIONRULE - KAFKA
+# ==============================================================================
+# Purpose: Traffic policy for Kafka connections
+# Special: TCP protocol, used by Payment and Inventory services
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: kafka-dr
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: kafka
+    component: traffic-policy
+spec:
+  host: kafka
+  
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 10s
+    
+    # Conservative for message queue
+    outlierDetection:
+      consecutiveGatewayErrors: 3
+      interval: 30s
+      baseEjectionTime: 60s
+    
+    tls:
+      mode: DISABLE                   # Kafka uses its own security
+
+---
+# ==============================================================================
+# DESTINATIONRULE - POSTGRESQL
+# ==============================================================================
+# Purpose: Traffic policy for PostgreSQL connections
+# Special: Database connections, careful with connection limits
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: postgres-dr
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: postgres
+    component: traffic-policy
+spec:
+  host: postgres
+  
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    
+    connectionPool:
+      tcp:
+        maxConnections: 50            # Conservative for database
+        connectTimeout: 5s
+        tcpKeepalive:
+          time: 300s
+          interval: 60s
+          probes: 3
+    
+    # Database circuit breaking
+    outlierDetection:
+      consecutiveGatewayErrors: 5
+      interval: 30s
+      baseEjectionTime: 60s
+      maxEjectionPercent: 30          # Keep 70% minimum
+    
+    tls:
+      mode: DISABLE                   # PostgreSQL has its own SSL
+
+---
+# ==============================================================================
+# LOAD BALANCER ALGORITHM COMPARISON
+# ==============================================================================
+#
+# ROUND_ROBIN (Default):
+#   Request flow: A → B → C → A → B → C
+#   
+#   Pros:
+#     ✅ Simple
+#     ✅ Even distribution
+#     ✅ No state needed
+#   
+#   Cons:
+#     ❌ Ignores pod load
+#     ❌ Ignores request complexity
+#   
+#   Use for:
+#     - Stateless services
+#     - Similar request durations
+#     - Read-heavy services (database, redis, kafka)
+#
+# LEAST_REQUEST (Recommended for APIs):
+#   Pod selection:
+#     Pod A: 10 active requests
+#     Pod B: 3 active requests  ← PICK THIS
+#     Pod C: 7 active requests
+#   
+#   Pros:
+#     ✅ Best performance
+#     ✅ Adapts to load
+#     ✅ Handles slow requests well
+#   
+#   Cons:
+#     ❌ Slight overhead (tracking active requests)
+#   
+#   Use for:
+#     - HTTP APIs
+#     - Varying request durations
+#     - User-facing services
+#
+# RANDOM:
+#   Pros:
+#     ✅ Very simple
+#     ✅ No state
+#   
+#   Cons:
+#     ❌ Uneven distribution (short term)
+#   
+#   Use for:
+#     - Low traffic
+#     - Don't care about optimization
+#
+# CONSISTENT_HASH:
+#   Hash("user-123") = 42 → Pod B (always)
+#   Hash("user-456") = 17 → Pod A (always)
+#   
+#   Pros:
+#     ✅ Sticky sessions
+#     ✅ Cache affinity
+#     ✅ Idempotency support
+#   
+#   Cons:
+#     ❌ Uneven distribution if hash skewed
+#     ❌ Pod failure affects specific users
+#   
+#   Use for:
+#     - Session-based apps
+#     - Caching services
+#     - Idempotency requirements (payment)
+#
+# ==============================================================================
+#
+# OUR CHOICES:
+#   - API Gateway: LEAST_REQUEST (best performance)
+#   - User Service: LEAST_REQUEST (auth varies in duration)
+#   - Product Service: LEAST_REQUEST (read-heavy, varying sizes)
+#   - Inventory Service: ROUND_ROBIN (stateless, uniform)
+#   - Payment Service: CONSISTENT_HASH (idempotency)
+#   - Redis/Kafka/Postgres: ROUND_ROBIN (infrastructure)
+#
+# ==============================================================================
+
