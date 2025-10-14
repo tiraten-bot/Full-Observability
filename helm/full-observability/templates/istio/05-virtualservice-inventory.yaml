@@ -1,0 +1,139 @@
+# ==============================================================================
+# VIRTUALSERVICE - INVENTORY SERVICE
+# ==============================================================================
+# Purpose: Routing rules for Inventory Service
+# Special: This service is a Kafka consumer (listens to events)
+# Access: Via API Gateway (HTTP), Payment Service (gRPC)
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: inventory-service-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: inventory-service
+    component: routing
+spec:
+  hosts:
+    - inventory-service
+    - inventory-service.observability.svc.cluster.local
+  
+  gateways:
+    - mesh
+  
+  http:
+    # Check stock availability (called by Payment Service)
+    - name: "check-availability"
+      match:
+        - uri:
+            prefix: /api/inventory/check
+      route:
+        - destination:
+            host: inventory-service
+            port:
+              number: 8082
+      # Stock checks should be fast
+      timeout: 5s
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: 5xx,reset,connect-failure
+      headers:
+        request:
+          add:
+            x-request-type: "availability-check"
+    
+    # Get inventory by product
+    - name: "get-inventory"
+      match:
+        - uri:
+            prefix: /api/inventory/product
+      route:
+        - destination:
+            host: inventory-service
+            port:
+              number: 8082
+      timeout: 10s
+      retries:
+        attempts: 3
+        perTryTimeout: 3s
+        retryOn: 5xx
+    
+    # Update quantity (called by Kafka consumer internally)
+    - name: "update-quantity"
+      match:
+        - uri:
+            prefix: /api/inventory
+          method:
+            exact: PATCH
+      route:
+        - destination:
+            host: inventory-service
+            port:
+              number: 8082
+      timeout: 20s
+      retries:
+        attempts: 2
+        perTryTimeout: 10s
+        retryOn: 5xx
+    
+    # Health check
+    - name: "health"
+      match:
+        - uri:
+            exact: /health
+      route:
+        - destination:
+            host: inventory-service
+            port:
+              number: 8082
+      timeout: 5s
+    
+    # Default
+    - name: "default"
+      route:
+        - destination:
+            host: inventory-service
+            port:
+              number: 8082
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: 5xx,reset
+
+---
+# gRPC VirtualService for Inventory Service
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: inventory-service-grpc-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: inventory-service
+    component: grpc-routing
+spec:
+  hosts:
+    - inventory-service
+  
+  gateways:
+    - mesh
+  
+  http:
+    - name: "grpc-inventory"
+      match:
+        - headers:
+            "content-type":
+              prefix: "application/grpc"
+      route:
+        - destination:
+            host: inventory-service
+            port:
+              number: 9092
+      timeout: 15s
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: cancelled,deadline-exceeded,unavailable
+
