@@ -121,13 +121,15 @@ func setupMiddleware(app *fiber.App) {
 		TimeZone:   "Local",
 	}))
 
-	// CORS
+	// CORS - Frontend için (development ve production için)
+	allowOrigins := getEnv("CORS_ALLOWED_ORIGINS", "*")
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "*",
-		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
-		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Request-Id, traceparent, tracestate",
+		AllowOrigins:     allowOrigins,
+		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS,HEAD",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Request-Id, X-User-Id, traceparent, tracestate",
 		AllowCredentials: true,
-		ExposeHeaders:    "X-Request-Id, X-Trace-Id",
+		ExposeHeaders:    "X-Request-Id, X-Trace-Id, X-User-Id",
+		MaxAge:           86400, // 24 hours
 	}))
 
 	// Compression
