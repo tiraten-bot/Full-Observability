@@ -177,6 +177,8 @@ services:
       PRODUCT_SERVICE_URL: http://product-service:8081
       INVENTORY_SERVICE_URL: http://inventory-service:8082
       PAYMENT_SERVICE_URL: http://payment-service:8083
+      # For multiple instances (load balancing):
+      # USER_SERVICE_URL: http://user-service-1:8080,http://user-service-2:8080,http://user-service-3:8080
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ""
       CORS_ALLOWED_ORIGINS: "*"

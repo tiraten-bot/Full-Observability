@@ -10,18 +10,29 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/tair/full-observability/api-gateway/config"
+	"github.com/tair/full-observability/api-gateway/loadbalancer"
+	"github.com/tair/full-observability/pkg/logger"
 )
 
 // ReverseProxy handles proxying requests to backend services
 type ReverseProxy struct {
-	config *config.GatewayConfig
-	client *http.Client
+	config        *config.GatewayConfig
+	client        *http.Client
+	loadBalancers map[string]*loadbalancer.RoundRobin
 }
 
 // NewReverseProxy creates a new reverse proxy
 func NewReverseProxy(cfg *config.GatewayConfig) *ReverseProxy {
+	// Initialize load balancers for each service
+	loadBalancers := make(map[string]*loadbalancer.RoundRobin)
+	
+	for name, svc := range cfg.Services {
+		loadBalancers[name] = loadbalancer.NewRoundRobin(svc.Instances)
+	}
+
 	return &ReverseProxy{
-		config: cfg,
+		config:        cfg,
+		loadBalancers: loadBalancers,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -30,16 +41,29 @@ func NewReverseProxy(cfg *config.GatewayConfig) *ReverseProxy {
 
 // ProxyRequest forwards the request to the target service
 func (p *ReverseProxy) ProxyRequest(c *fiber.Ctx, serviceName string) error {
-	// Get service configuration
-	serviceConfig, exists := p.config.Services[serviceName]
-	if !exists {
+	// Get next server from load balancer
+	lb, lbExists := p.loadBalancers[serviceName]
+	if !lbExists {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
-			"error": fmt.Sprintf("Service '%s' not found", serviceName),
+			"error": fmt.Sprintf("Load balancer for '%s' not found", serviceName),
 		})
 	}
 
+	serverURL := lb.Next()
+	if serverURL == "" {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+			"error": fmt.Sprintf("No available instances for '%s'", serviceName),
+		})
+	}
+
+	logger.Logger.Debug().
+		Str("service", serviceName).
+		Str("target_url", serverURL).
+		Str("path", c.Path()).
+		Msg("Load balancer selected instance")
+
 	// Build target URL
-	targetURL := p.buildTargetURL(c, serviceConfig)
+	targetURL := p.buildTargetURLWithServer(c, serverURL)
 
 	// Create new request
 	req, err := http.NewRequest(
@@ -86,8 +110,11 @@ func (p *ReverseProxy) ProxyRequest(c *fiber.Ctx, serviceName string) error {
 
 // buildTargetURL constructs the full URL for the backend service
 func (p *ReverseProxy) buildTargetURL(c *fiber.Ctx, service config.ServiceConfig) string {
-	// Remove the service prefix from the path
-	// e.g., /api/users/* -> /api/users/*
+	return p.buildTargetURLWithServer(c, service.BaseURL)
+}
+
+// buildTargetURLWithServer constructs the full URL with a specific server
+func (p *ReverseProxy) buildTargetURLWithServer(c *fiber.Ctx, serverURL string) string {
 	path := string(c.Request().URI().Path())
 	
 	// Build query string
@@ -96,7 +123,12 @@ func (p *ReverseProxy) buildTargetURL(c *fiber.Ctx, service config.ServiceConfig
 		queryString = "?" + queryString
 	}
 
-	return service.BaseURL + path + queryString
+	return serverURL + path + queryString
+}
+
+// GetLoadBalancers returns all load balancers (for stats)
+func (p *ReverseProxy) GetLoadBalancers() map[string]*loadbalancer.RoundRobin {
+	return p.loadBalancers
 }
 
 // copyHeaders copies relevant headers from Fiber context to http.Request

@@ -77,7 +77,7 @@ var Routes = []RouteDefinition{
 
 // SetupRoutes configures all routes in the gateway
 func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig, cbManager *middleware.CircuitBreakerManager) {
-	// Create reverse proxy
+	// Create reverse proxy (with load balancers)
 	reverseProxy := proxy.NewReverseProxy(cfg)
 
 	// Create health checker
@@ -123,6 +123,20 @@ func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig, cbManager *middlewar
 	app.Get("/health/circuits", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"circuits": cbManager.GetAllStats(),
+		})
+	})
+
+	// Load balancer stats
+	app.Get("/health/loadbalancer", func(c *fiber.Ctx) error {
+		lbs := reverseProxy.GetLoadBalancers()
+		stats := make(map[string]interface{})
+		
+		for name, lb := range lbs {
+			stats[name] = lb.GetStats()
+		}
+		
+		return c.JSON(fiber.Map{
+			"load_balancers": stats,
 		})
 	})
 
