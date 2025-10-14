@@ -1,0 +1,159 @@
+# ==============================================================================
+# PRODUCTION ENVIRONMENT VALUES
+# ==============================================================================
+# Override values for production environment
+# Usage: helm install -f values-prod.yaml
+# ==============================================================================
+
+global:
+  environment: production
+  imagePullPolicy: IfNotPresent
+  storageClass: "fast-ssd"  # Use production storage class
+
+# Production: Enable persistence
+postgresql:
+  persistence:
+    enabled: true
+    size: 50Gi
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  replicas: 3  # HA setup
+
+prometheus:
+  persistence:
+    enabled: true
+    size: 100Gi
+  retention: 30d
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 4Gi
+    limits:
+      cpu: 2000m
+      memory: 8Gi
+
+grafana:
+  persistence:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+kafka:
+  replicas: 5
+  persistence:
+    enabled: true
+    size: 100Gi
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+# Production replicas and autoscaling
+userService:
+  replicas: 5
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+productService:
+  replicas: 5
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+inventoryService:
+  replicas: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 15
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+paymentService:
+  replicas: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 15
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+apiGateway:
+  replicas: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+  service:
+    type: LoadBalancer
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Production ingress with TLS
+ingress:
+  enabled: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+
+# Production secrets (these should be managed by external secret manager)
+secrets:
+  database:
+    username: postgres_prod
+    password: CHANGE_THIS_IN_PRODUCTION
+  jwt:
+    secretKey: CHANGE_THIS_TO_STRONG_RANDOM_KEY_IN_PRODUCTION
+  grafana:
+    adminPassword: CHANGE_THIS_IN_PRODUCTION
+
+# Network policies enabled
+networkPolicies:
+  enabled: true
+

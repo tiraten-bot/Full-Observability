@@ -1,0 +1,112 @@
+# ==============================================================================
+# DEVELOPMENT ENVIRONMENT VALUES
+# ==============================================================================
+# Override values for development environment
+# Usage: helm install -f values-dev.yaml
+# ==============================================================================
+
+global:
+  environment: development
+  imagePullPolicy: Always
+
+# Development: Disable persistence for faster iterations
+postgresql:
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+prometheus:
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+grafana:
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+# Reduced replicas for development
+userService:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+productService:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+inventoryService:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+paymentService:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+apiGateway:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  service:
+    type: NodePort
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# Disable ingress in development
+ingress:
+  enabled: false
+
