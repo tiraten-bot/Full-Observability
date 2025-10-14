@@ -1,0 +1,52 @@
+# ==============================================================================
+# DESTINATIONRULE - INVENTORY SERVICE
+# ==============================================================================
+# Purpose: Traffic policy for Inventory Service
+# Characteristics: 
+#   - Critical service (stock availability)
+#   - Kafka consumer (background processing)
+#   - Called by Payment Service (stock validation)
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: inventory-service-dr
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: inventory-service
+    component: traffic-policy
+spec:
+  host: inventory-service
+  
+  trafficPolicy:
+    # Round-robin for inventory checks (stateless)
+    loadBalancer:
+      simple: ROUND_ROBIN
+    
+    connectionPool:
+      tcp:
+        maxConnections: 150
+        connectTimeout: 30s
+      http:
+        http1MaxPendingRequests: 75
+        http2MaxRequests: 150
+        maxRequestsPerConnection: 2
+    
+    # Critical service - fast circuit breaking
+    outlierDetection:
+      consecutiveGatewayErrors: 3     # Fast detection
+      consecutive5xxErrors: 3
+      interval: 10s                   # Frequent checks
+      baseEjectionTime: 45s
+      maxEjectionPercent: 40          # Keep more pods healthy
+      minHealthPercent: 20
+    
+    tls:
+      mode: ISTIO_MUTUAL
+  
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+
