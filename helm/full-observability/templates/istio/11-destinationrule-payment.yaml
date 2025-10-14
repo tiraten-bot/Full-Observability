@@ -1,0 +1,163 @@
+# ==============================================================================
+# DESTINATIONRULE - PAYMENT SERVICE
+# ==============================================================================
+# Purpose: Traffic policy for Payment Service
+# Characteristics:
+#   - MOST CRITICAL service (financial transactions)
+#   - Calls multiple services (User, Product, Inventory)
+#   - Publishes to Kafka
+#   - Requires high availability and consistency
+#
+# SPECIAL CONSIDERATIONS:
+#   - Conservative connection limits (avoid overload)
+#   - Strict circuit breaking (fail fast)
+#   - Consistent hashing for idempotency
+#   - No aggressive retries (avoid duplicate charges)
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: payment-service-dr
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: payment-service
+    component: traffic-policy
+  annotations:
+    description: "Traffic policy for Payment Service - critical financial service"
+spec:
+  host: payment-service
+  
+  trafficPolicy:
+    # =========================================================================
+    # LOAD BALANCER: Consistent Hash for Idempotency
+    # =========================================================================
+    # Why CONSISTENT_HASH for payment?
+    #   - Same payment request goes to same pod
+    #   - Helps with idempotency (duplicate detection)
+    #   - Better for caching payment status
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: "x-idempotency-key"   # Hash by idempotency key
+        # If no header, fallback to source IP
+        useSourceIp: true
+        minimumRingSize: 1024
+      
+      # Alternative: LEAST_REQUEST (if no idempotency keys)
+      # simple: LEAST_REQUEST
+    
+    # =========================================================================
+    # CONNECTION POOL: Conservative Limits
+    # =========================================================================
+    # Why conservative?
+    #   - Payment processing is resource-intensive
+    #   - Better to queue than overload
+    #   - Prevent database connection exhaustion
+    connectionPool:
+      tcp:
+        maxConnections: 50            # Lower than other services
+        connectTimeout: 10s           # Fail fast
+        tcpKeepalive:
+          time: 3600s
+          interval: 60s
+          probes: 3
+      
+      http:
+        http1MaxPendingRequests: 25   # Small queue
+        http2MaxRequests: 50
+        maxRequestsPerConnection: 1   # Single request per connection
+        maxRetries: 1                 # Minimal retries
+        idleTimeout: 900s             # 15 min (shorter than others)
+    
+    # =========================================================================
+    # OUTLIER DETECTION: Strict Circuit Breaking
+    # =========================================================================
+    # Why strict for payment?
+    #   - Financial transactions must be reliable
+    #   - Better to fail fast than process incorrectly
+    #   - Protect downstream services (database, kafka)
+    outlierDetection:
+      consecutiveGatewayErrors: 2     # Very sensitive (2 errors = eject)
+      consecutive5xxErrors: 2
+      interval: 5s                    # Check very frequently
+      baseEjectionTime: 120s          # Long ejection (2 min)
+      maxEjectionPercent: 30          # Keep 70% minimum healthy
+      minHealthPercent: 30
+      
+      splitExternalLocalOriginErrors: true
+      consecutiveLocalOriginFailures: 2
+    
+    # =========================================================================
+    # TLS: Strict mTLS
+    # =========================================================================
+    tls:
+      mode: ISTIO_MUTUAL              # Mandatory encryption
+  
+  # ===========================================================================
+  # SUBSETS: Payment Service Versions
+  # ===========================================================================
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    
+    # Canary for payment requires extra caution
+    - name: canary
+      labels:
+        version: canary
+      trafficPolicy:
+        connectionPool:
+          tcp:
+            maxConnections: 10        # Very limited
+          http:
+            http1MaxPendingRequests: 5
+        outlierDetection:
+          consecutiveErrors: 1        # Single error = eject
+          interval: 2s                # Very frequent checks
+          baseEjectionTime: 300s      # 5 min ejection
+
+---
+# ==============================================================================
+# PAYMENT SERVICE - SPECIAL PATTERNS
+# ==============================================================================
+#
+# PATTERN 1: Idempotency with Consistent Hashing
+#
+#   Problem: User submits payment twice (double-click)
+#   Solution: Consistent hash on idempotency-key
+#     - First request: Hash("payment-xyz") → Pod A
+#     - Duplicate request: Hash("payment-xyz") → Pod A (same pod)
+#     - Pod A can detect duplicate in local cache
+#
+# PATTERN 2: Circuit Breaking for Dependent Services
+#
+#   Payment Service calls:
+#     1. User Service (validate user) - if down, FAIL FAST
+#     2. Product Service (validate product) - if down, FAIL FAST
+#     3. Inventory Service (check stock) - if down, FAIL FAST
+#   
+#   Without circuit breaker:
+#     - Each call waits 30s timeout
+#     - Total: 90s of waiting
+#     - Poor user experience
+#   
+#   With circuit breaker:
+#     - First request detects service is down
+#     - Circuit OPENS
+#     - Subsequent requests FAIL IMMEDIATELY
+#     - Total: <1s (fast fail)
+#
+# PATTERN 3: Resource Protection
+#
+#   Payment creates:
+#     - Database connections
+#     - Kafka connections
+#     - gRPC connections (3 services)
+#   
+#   Conservative limits prevent:
+#     - Database connection pool exhaustion
+#     - Kafka producer overload
+#     - Memory issues
+#
+# ==============================================================================
+
