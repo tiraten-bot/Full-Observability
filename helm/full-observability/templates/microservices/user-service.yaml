@@ -1,4 +1,7 @@
 {{- if .Values.userService.enabled }}
+# ==============================================================================
+# USER SERVICE - DEPLOYMENT
+# ==============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,8 +10,15 @@ metadata:
   labels:
     app: {{ .Values.userService.name }}
     component: microservice
+    tier: backend
+    version: {{ .Values.userService.image.tag }}
 spec:
   replicas: {{ .Values.userService.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: {{ .Values.userService.name }}
@@ -17,20 +27,59 @@ spec:
       labels:
         app: {{ .Values.userService.name }}
         component: microservice
+        tier: backend
+        version: {{ .Values.userService.image.tag }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "{{ .Values.userService.service.httpPort }}"
         prometheus.io/path: "/metrics"
     spec:
+      # Anti-affinity to spread pods across nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - {{ .Values.userService.name }}
+                topologyKey: kubernetes.io/hostname
+      
+      # Init container to wait for database
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL to be ready..."
+              until nc -z -v -w30 postgres 5432
+              do
+                echo "Waiting for database connection..."
+                sleep 5
+              done
+              echo "PostgreSQL is ready!"
+      
       containers:
         - name: {{ .Values.userService.name }}
           image: {{ .Values.global.imageRegistry }}/{{ .Values.userService.image.repository }}:{{ .Values.userService.image.tag }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          
           ports:
-            - containerPort: {{ .Values.userService.service.httpPort }}
-              name: http
-            - containerPort: {{ .Values.userService.service.grpcPort }}
-              name: grpc
+            - name: http
+              containerPort: {{ .Values.userService.service.httpPort }}
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.userService.service.grpcPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.userService.service.httpPort }}
+              protocol: TCP
+          
           env:
             - name: HTTP_PORT
               value: "{{ .Values.userService.service.httpPort }}"
@@ -38,10 +87,13 @@ spec:
               value: "{{ .Values.userService.service.grpcPort }}"
             - name: DB_NAME
               value: "userdb"
+            - name: OTEL_SERVICE_NAME
+              value: "user-service"
             {{- range .Values.userService.env }}
             - name: {{ .name }}
               value: {{ .value | quote }}
             {{- end }}
+          
           envFrom:
             - secretRef:
                 name: postgres-secret
@@ -49,21 +101,89 @@ spec:
                 name: jwt-secret
             - configMapRef:
                 name: app-config
+          
           resources:
-            {{- toYaml .Values.userService.resources | nindent 12 }}
+            requests:
+              cpu: {{ .Values.userService.resources.requests.cpu }}
+              memory: {{ .Values.userService.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.userService.resources.limits.cpu }}
+              memory: {{ .Values.userService.resources.limits.memory }}
+          
+          # Liveness probe - checks if container is alive
           livenessProbe:
             httpGet:
               path: /health
               port: http
+              scheme: HTTP
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          
+          # Readiness probe - checks if container is ready to serve traffic
           readinessProbe:
             httpGet:
               path: /health
               port: http
+              scheme: HTTP
             initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+          
+          # Startup probe - for slow starting containers
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 30
+          
+          # Security context
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          
+          # Lifecycle hooks
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - sleep 15
+      
+      # Security context for pod
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      
+      # Termination grace period
+      terminationGracePeriodSeconds: 30
+      
+      # DNS policy
+      dnsPolicy: ClusterFirst
+      
+      # Restart policy
+      restartPolicy: Always
+
 ---
+# ==============================================================================
+# USER SERVICE - SERVICE (HTTP + gRPC)
+# ==============================================================================
 apiVersion: v1
 kind: Service
 metadata:
@@ -71,26 +191,44 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ .Values.userService.name }}
+    component: microservice
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "{{ .Values.userService.service.httpPort }}"
 spec:
   type: {{ .Values.userService.service.type }}
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
   ports:
-    - port: {{ .Values.userService.service.httpPort }}
+    - name: http
+      port: {{ .Values.userService.service.httpPort }}
       targetPort: http
       protocol: TCP
-      name: http
-    - port: {{ .Values.userService.service.grpcPort }}
+    - name: grpc
+      port: {{ .Values.userService.service.grpcPort }}
       targetPort: grpc
       protocol: TCP
-      name: grpc
+    - name: metrics
+      port: {{ .Values.userService.service.httpPort }}
+      targetPort: metrics
+      protocol: TCP
   selector:
     app: {{ .Values.userService.name }}
+
 ---
+# ==============================================================================
+# USER SERVICE - HORIZONTAL POD AUTOSCALER
+# ==============================================================================
 {{- if .Values.userService.autoscaling.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ .Values.userService.name }}-hpa
   namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.userService.name }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -113,6 +251,69 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.userService.autoscaling.targetMemoryUtilizationPercentage }}
     {{- end }}
-{{- end }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 15
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
 {{- end }}
 
+---
+# ==============================================================================
+# USER SERVICE - POD DISRUPTION BUDGET
+# ==============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Values.userService.name }}-pdb
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.userService.name }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.userService.name }}
+
+---
+# ==============================================================================
+# USER SERVICE - SERVICE MONITOR (Prometheus Operator)
+# ==============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Values.userService.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.userService.name }}
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.userService.name }}
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
+      scheme: http
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.global.namespace }}
+
+{{- end }}
