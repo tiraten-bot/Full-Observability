@@ -1,0 +1,291 @@
+# ==============================================================================
+# PEER AUTHENTICATION - mTLS CONFIGURATION
+# ==============================================================================
+# Purpose: Configure mutual TLS (mTLS) for service-to-service communication
+#
+# WHAT IS PEER AUTHENTICATION?
+#   Defines how services authenticate each other
+#   Controls mTLS mode for incoming connections
+#
+# THREE MODES:
+#   1. DISABLE: No encryption (plain text)
+#   2. PERMISSIVE: Accept both mTLS and plain text (migration mode)
+#   3. STRICT: Only mTLS accepted (production mode)
+#
+# SCOPE:
+#   - Namespace-wide: Apply to all services in namespace
+#   - Service-specific: Apply to specific service only
+#   - Port-specific: Different modes for different ports
+#
+# ==============================================================================
+
+# ==============================================================================
+# GLOBAL MTLS - Namespace Level (STRICT MODE)
+# ==============================================================================
+# Purpose: Enforce mTLS for all services in observability namespace
+# Mode: STRICT (only encrypted connections accepted)
+#
+# This is the RECOMMENDED configuration for production
+# ==============================================================================
+
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: mtls-policy
+    scope: namespace
+  annotations:
+    description: "Enforce strict mTLS for all services in namespace"
+spec:
+  # Apply to all workloads in namespace (no selector = all)
+  
+  # mTLS Mode
+  mtls:
+    mode: STRICT
+    # STRICT = Only mTLS connections accepted
+    #   - Service with sidecar → mTLS → ✅ Works
+    #   - Service without sidecar → plain → ❌ Rejected
+    #   - External client → plain → ❌ Rejected (unless through ingress)
+
+---
+# ==============================================================================
+# SERVICE-SPECIFIC MTLS - User Service
+# ==============================================================================
+# Purpose: Override namespace default for specific service
+# Use case: User Service needs to accept plain text for legacy clients
+# ==============================================================================
+
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: user-service-mtls
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: user-service
+spec:
+  # Selector: Which workload this applies to
+  selector:
+    matchLabels:
+      app: user-service
+  
+  # Override: PERMISSIVE mode for migration
+  mtls:
+    mode: PERMISSIVE
+    # PERMISSIVE = Accept both mTLS and plain text
+    # Use during migration when some clients don't have sidecars yet
+
+---
+# ==============================================================================
+# PORT-SPECIFIC MTLS - Product Service
+# ==============================================================================
+# Purpose: Different mTLS modes for different ports
+# Use case: 
+#   - HTTP port (8081): STRICT mTLS (internal only)
+#   - gRPC port (9091): PERMISSIVE (for external gRPC clients)
+# ==============================================================================
+
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: product-service-mtls
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: product-service
+spec:
+  selector:
+    matchLabels:
+      app: product-service
+  
+  # Namespace default applies, but override specific ports
+  mtls:
+    mode: STRICT
+  
+  # Port-level overrides
+  portLevelMtls:
+    # Port 9091 (gRPC): Allow plain text for external clients
+    9091:
+      mode: PERMISSIVE
+
+---
+# ==============================================================================
+# MTLS FOR EXTERNAL SERVICES (Database, Kafka, Redis)
+# ==============================================================================
+# Purpose: Disable mTLS for services outside the mesh
+# Why: PostgreSQL, Redis, Kafka have their own security mechanisms
+# ==============================================================================
+
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: postgres-mtls
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: postgres
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  mtls:
+    mode: DISABLE
+    # PostgreSQL uses its own SSL/TLS
+    # Istio mTLS would interfere
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: redis-mtls
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: redis
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  mtls:
+    mode: DISABLE
+    # Redis uses AUTH password, not TLS
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: kafka-mtls
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: kafka
+spec:
+  selector:
+    matchLabels:
+      app: kafka
+  mtls:
+    mode: DISABLE
+    # Kafka uses SASL/SSL, not Istio mTLS
+
+---
+# ==============================================================================
+# MTLS MIGRATION STRATEGY
+# ==============================================================================
+#
+# PHASE 1: Start with PERMISSIVE (accept both)
+#   PeerAuthentication:
+#     mtls:
+#       mode: PERMISSIVE
+#   
+#   Result:
+#     - Services with sidecar use mTLS ✅
+#     - Services without sidecar use plain text ✅
+#     - No service disruption
+#
+# PHASE 2: Enable sidecar injection on all namespaces
+#   kubectl label namespace observability istio-injection=enabled
+#   kubectl rollout restart deployments -n observability
+#   
+#   Result:
+#     - All pods get Envoy sidecar
+#     - All connections upgrade to mTLS
+#     - Plain text connections still accepted (PERMISSIVE)
+#
+# PHASE 3: Switch to STRICT mode
+#   PeerAuthentication:
+#     mtls:
+#       mode: STRICT
+#   
+#   Result:
+#     - Only mTLS connections accepted
+#     - Plain text connections REJECTED
+#     - Full encryption enforced
+#
+# ROLLBACK: If problems, switch back to PERMISSIVE
+#
+# ==============================================================================
+
+---
+# ==============================================================================
+# MTLS BENEFITS
+# ==============================================================================
+#
+# 1. ENCRYPTION IN TRANSIT:
+#    All service-to-service communication encrypted
+#    Prevent network sniffing, packet capture
+#
+# 2. AUTHENTICATION:
+#    Each service proves its identity
+#    Prevent service spoofing
+#
+# 3. AUTHORIZATION:
+#    Combined with AuthorizationPolicy
+#    "Only user-service can call product-service.GetProduct"
+#
+# 4. COMPLIANCE:
+#    PCI-DSS, HIPAA, SOC2 requirements
+#    Encryption at rest + in transit
+#
+# 5. ZERO-TRUST SECURITY:
+#    Never trust, always verify
+#    Even inside Kubernetes cluster
+#
+# ==============================================================================
+
+---
+# ==============================================================================
+# MTLS CERTIFICATE DETAILS
+# ==============================================================================
+#
+# ISTIO CA (Certificate Authority):
+#   Istio creates its own CA (self-signed root certificate)
+#   Stored in: istio-system namespace
+#   Secret name: istio-ca-secret
+#
+# SERVICE CERTIFICATES:
+#   Each pod gets its own certificate
+#   Subject: spiffe://cluster.local/ns/observability/sa/user-service
+#   Validity: 24 hours (rotated automatically)
+#   Storage: Mounted as Kubernetes Secret in pod
+#
+# CERTIFICATE ROTATION:
+#   Istio checks every 12 hours
+#   Renews if < 25% validity remaining
+#   Hot reload (no pod restart needed)
+#   Zero downtime rotation
+#
+# TRUST BUNDLE:
+#   All services trust Istio CA root certificate
+#   Distributed automatically via ConfigMap
+#   Updated automatically on CA rotation
+#
+# SPIFFE (Secure Production Identity Framework For Everyone):
+#   Standard for service identity
+#   Format: spiffe://trust-domain/path/to/service
+#   Example: spiffe://cluster.local/ns/observability/sa/user-service
+#
+# ==============================================================================
+
+---
+# ==============================================================================
+# VERIFY MTLS
+# ==============================================================================
+#
+# Check if mTLS is enabled:
+#   istioctl authn tls-check <pod-name> -n observability
+#
+# Output:
+#   HOST:PORT                STATUS     SERVER     CLIENT
+#   product-service:8081     OK         STRICT     ISTIO_MUTUAL
+#   postgres:5432            OK         DISABLE    -
+#
+# View certificate:
+#   istioctl proxy-config secret <pod-name> -n observability
+#
+# Test mTLS:
+#   # From pod WITH sidecar (should work)
+#   kubectl exec -it <pod> -c istio-proxy -- curl http://product-service:8081
+#   
+#   # From pod WITHOUT sidecar (should fail if STRICT)
+#   kubectl run test --image=curlimages/curl -it --rm -- curl http://product-service:8081
+#   Error: Connection reset (mTLS required)
+#
+# ==============================================================================
+
