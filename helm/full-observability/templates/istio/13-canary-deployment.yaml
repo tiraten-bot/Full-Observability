@@ -1,0 +1,459 @@
+# ==============================================================================
+# CANARY DEPLOYMENT EXAMPLES
+# ==============================================================================
+# Purpose: Demonstrate traffic splitting patterns for gradual rollouts
+#
+# WHAT IS CANARY DEPLOYMENT?
+#   Deploy new version to small subset of users first
+#   Monitor metrics, errors, performance
+#   Gradually increase traffic if successful
+#   Rollback instantly if problems detected
+#
+# CANARY STAGES:
+#   Stage 1: v1 (100%)
+#   Stage 2: v1 (90%) + v2 (10%)  ← Canary starts
+#   Stage 3: v1 (50%) + v2 (50%)  ← Monitoring period
+#   Stage 4: v1 (10%) + v2 (90%)  ← Almost complete
+#   Stage 5: v2 (100%)            ← Fully deployed
+#
+# ROLLBACK: If errors increase → revert to Stage 1 instantly
+#
+# ==============================================================================
+
+# ==============================================================================
+# EXAMPLE 1: BASIC CANARY - User Service
+# ==============================================================================
+# Scenario: New user service version with improved auth
+# Strategy: 90% stable, 10% canary
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: user-service-canary-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: user-service
+    deployment: canary
+  annotations:
+    description: "Canary deployment for User Service - 90% v1, 10% v2"
+spec:
+  hosts:
+    - user-service
+  
+  gateways:
+    - mesh
+  
+  http:
+    - name: "canary-routing"
+      route:
+        # 90% traffic to stable version
+        - destination:
+            host: user-service
+            port:
+              number: 8080
+            subset: v1                # Defined in DestinationRule
+          weight: 90                  # 90% of traffic
+        
+        # 10% traffic to canary version
+        - destination:
+            host: user-service
+            port:
+              number: 8080
+            subset: v2                # New version
+          weight: 10                  # 10% of traffic
+      
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: 5xx,reset
+
+---
+# ==============================================================================
+# EXAMPLE 2: HEADER-BASED CANARY - Beta Users
+# ==============================================================================
+# Scenario: Internal beta testers get new version
+# Strategy: 
+#   - Users with header "x-user-type: beta" → v2
+#   - All other users → v1
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: product-service-beta-canary-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: product-service
+    deployment: beta-canary
+spec:
+  hosts:
+    - product-service
+  
+  gateways:
+    - mesh
+  
+  http:
+    # Route 1: Beta users → v2 (new version)
+    - name: "beta-users"
+      match:
+        - headers:
+            x-user-type:
+              exact: "beta"           # Beta testers
+      route:
+        - destination:
+            host: product-service
+            subset: v2                # New version for beta users
+          weight: 100
+      
+      # Beta version might be unstable, shorter timeout
+      timeout: 15s
+      retries:
+        attempts: 2
+        perTryTimeout: 7s
+    
+    # Route 2: Regular users → v1 (stable)
+    - name: "regular-users"
+      route:
+        - destination:
+            host: product-service
+            subset: v1                # Stable version
+          weight: 100
+      
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+
+---
+# ==============================================================================
+# EXAMPLE 3: GEOGRAPHIC CANARY - Regional Rollout
+# ==============================================================================
+# Scenario: Roll out to specific region first
+# Strategy:
+#   - US East region → v2 (new version)
+#   - Other regions → v1 (stable)
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: payment-service-geo-canary-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: payment-service
+    deployment: geo-canary
+spec:
+  hosts:
+    - payment-service
+  
+  gateways:
+    - mesh
+  
+  http:
+    # Route 1: US East region → v2
+    - name: "us-east-region"
+      match:
+        - headers:
+            x-region:
+              exact: "us-east-1"
+      route:
+        - destination:
+            host: payment-service
+            subset: v2
+          weight: 100
+    
+    # Route 2: Other regions → v1
+    - name: "other-regions"
+      route:
+        - destination:
+            host: payment-service
+            subset: v1
+          weight: 100
+
+---
+# ==============================================================================
+# EXAMPLE 4: PERCENTAGE-BASED CANARY WITH MIRROR
+# ==============================================================================
+# Scenario: Test new version with real traffic WITHOUT impacting users
+# Strategy:
+#   - 100% traffic → v1 (stable)
+#   - MIRROR 10% traffic → v2 (testing)
+#   - v2 responses are DISCARDED (not sent to user)
+#   - Monitor v2 metrics to see if it works
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: inventory-service-mirror-canary-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: inventory-service
+    deployment: mirror-canary
+spec:
+  hosts:
+    - inventory-service
+  
+  gateways:
+    - mesh
+  
+  http:
+    - name: "mirror-canary"
+      route:
+        # All users get v1 response
+        - destination:
+            host: inventory-service
+            subset: v1
+          weight: 100
+      
+      # BUT 10% of requests are also sent to v2 (mirrored)
+      mirror:
+        host: inventory-service
+        subset: v2
+      
+      # What percentage to mirror
+      mirrorPercentage:
+        value: 10.0                   # 10% of traffic
+      
+      # Users only see v1 responses
+      # v2 responses are discarded
+      # But v2 logs/metrics are collected
+      # Perfect for testing without risk!
+
+---
+# ==============================================================================
+# EXAMPLE 5: BLUE-GREEN DEPLOYMENT
+# ==============================================================================
+# Scenario: Complete version switch with instant rollback capability
+# Strategy:
+#   - Deploy v2 (green) alongside v1 (blue)
+#   - Initially all traffic → v1 (blue)
+#   - When ready, switch 100% → v2 (green)
+#   - If problem, switch back instantly
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: user-service-blue-green-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: user-service
+    deployment: blue-green
+  annotations:
+    # Change this annotation to switch versions
+    active-version: "blue"          # or "green"
+spec:
+  hosts:
+    - user-service
+  
+  gateways:
+    - mesh
+  
+  http:
+    # OPTION A: All traffic to BLUE (v1)
+    - name: "blue-green-switch"
+      route:
+        - destination:
+            host: user-service
+            subset: blue              # Change to "green" to switch
+          weight: 100
+    
+    # OPTION B: All traffic to GREEN (v2)
+    # Uncomment below and comment above to switch
+    # - name: "blue-green-switch"
+    #   route:
+    #     - destination:
+    #         host: user-service
+    #         subset: green
+    #       weight: 100
+
+# Blue-Green DestinationRule
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: user-service-blue-green-dr
+  namespace: {{ .Values.global.namespace }}
+spec:
+  host: user-service
+  subsets:
+    - name: blue
+      labels:
+        version: v1
+        color: blue
+    - name: green
+      labels:
+        version: v2
+        color: green
+
+---
+# ==============================================================================
+# EXAMPLE 6: ADVANCED CANARY - Metric-Based
+# ==============================================================================
+# Scenario: Gradually increase traffic based on metrics
+# Strategy:
+#   1. Start: 95% v1, 5% v2
+#   2. Monitor: Error rate, latency, throughput
+#   3. If metrics OK: Increase to 90% v1, 10% v2
+#   4. Continue until 100% v2
+#   5. If metrics BAD: Rollback to 100% v1
+#
+# This requires automation (Flagger, Argo Rollouts)
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: payment-service-progressive-canary-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: payment-service
+    deployment: progressive-canary
+  annotations:
+    # These annotations would be used by automation tool (Flagger)
+    flagger.app/metric.error-rate.max: "5"           # Max 5% error rate
+    flagger.app/metric.latency-p99.max: "500"        # Max 500ms p99 latency
+spec:
+  hosts:
+    - payment-service
+  
+  gateways:
+    - mesh
+  
+  http:
+    - name: "progressive-canary"
+      route:
+        # Primary version (stable)
+        - destination:
+            host: payment-service
+            subset: v1
+          weight: 95              # Initially 95%
+        
+        # Canary version (new)
+        - destination:
+            host: payment-service
+            subset: canary
+          weight: 5               # Initially 5%
+      
+      # Conservative settings for payment canary
+      timeout: 60s
+      retries:
+        attempts: 1               # No aggressive retries during canary
+        perTryTimeout: 30s
+
+---
+# ==============================================================================
+# TRAFFIC SPLITTING PATTERNS - COMPARISON
+# ==============================================================================
+#
+# 1. CANARY DEPLOYMENT:
+#
+#    When:
+#      - New feature (risky)
+#      - Performance changes
+#      - Database schema changes
+#
+#    How:
+#      Start small (5-10%), gradually increase
+#      Monitor: errors, latency, resource usage
+#      Rollback if metrics degrade
+#
+#    Pros:
+#      ✅ Safe (limited blast radius)
+#      ✅ Gradual rollout
+#      ✅ Easy rollback
+#
+#    Cons:
+#      ❌ Slower deployment
+#      ❌ Both versions running (resource overhead)
+#
+# 2. BLUE-GREEN DEPLOYMENT:
+#
+#    When:
+#      - Need instant rollback capability
+#      - All-or-nothing deployment
+#      - Database is backward compatible
+#
+#    How:
+#      Deploy v2 (green) completely
+#      Switch 100% traffic instantly
+#      Keep v1 (blue) running for rollback
+#
+#    Pros:
+#      ✅ Instant switch
+#      ✅ Instant rollback
+#      ✅ No mixed versions
+#
+#    Cons:
+#      ❌ 2x resource usage
+#      ❌ All users affected if problem
+#
+# 3. MIRRORED CANARY:
+#
+#    When:
+#      - Want to test without risk
+#      - Performance testing
+#      - Load testing
+#
+#    How:
+#      100% traffic → v1 (users see this)
+#      10% mirrored → v2 (responses discarded)
+#      Monitor v2 logs/metrics
+#
+#    Pros:
+#      ✅ Zero risk to users
+#      ✅ Real traffic testing
+#      ✅ Performance validation
+#
+#    Cons:
+#      ❌ Extra resource usage
+#      ❌ Side effects (if v2 writes to DB)
+#
+# 4. HEADER-BASED ROUTING:
+#
+#    When:
+#      - Beta testers
+#      - Internal team testing
+#      - Feature flags
+#
+#    How:
+#      Header "x-beta: true" → v2
+#      No header → v1
+#
+#    Pros:
+#      ✅ Targeted testing
+#      ✅ Controlled user group
+#
+#    Cons:
+#      ❌ Requires header injection
+#
+# ==============================================================================
+#
+# OUR RECOMMENDATION BY SERVICE:
+#
+#   User Service:
+#     - CANARY (auth is critical, gradual rollout)
+#     - 95% → 90% → 70% → 50% → 100%
+#
+#   Product Service:
+#     - CANARY or MIRROR (read-heavy, test first)
+#     - Mirror 20% for load testing
+#
+#   Inventory Service:
+#     - BLUE-GREEN (simple service, quick switch)
+#     - Deploy completely, switch instantly
+#
+#   Payment Service:
+#     - HEADER-BASED + CANARY (most critical)
+#     - Internal team first with header
+#     - Then gradual 5% → 10% → 20% → 50% → 100%
+#     - NEVER use mirror (would create duplicate payments!)
+#
+#   API Gateway:
+#     - BLUE-GREEN (infrastructure, test thoroughly first)
+#
+# ==============================================================================
+
