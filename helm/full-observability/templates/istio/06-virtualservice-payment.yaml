@@ -1,0 +1,207 @@
+# ==============================================================================
+# VIRTUALSERVICE - PAYMENT SERVICE
+# ==============================================================================
+# Purpose: Routing rules for Payment Service
+# Special: 
+#   - Calls multiple services (User, Product, Inventory) via gRPC
+#   - Publishes to Kafka
+#   - Critical service (needs high availability)
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: payment-service-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: payment-service
+    component: routing
+  annotations:
+    description: "Payment Service routing - critical transaction service"
+spec:
+  hosts:
+    - payment-service
+    - payment-service.observability.svc.cluster.local
+  
+  gateways:
+    - mesh
+  
+  http:
+    # ==========================================================================
+    # ROUTE 1: Create Payment (Most Critical)
+    # ==========================================================================
+    - name: "create-payment"
+      match:
+        - uri:
+            exact: /api/payments
+          method:
+            exact: POST
+      route:
+        - destination:
+            host: payment-service
+            port:
+              number: 8083
+      
+      # Critical payment operations need longer timeout
+      timeout: 60s
+      
+      # Conservative retry policy (don't create duplicate payments)
+      retries:
+        attempts: 2                         # Only 2 retries
+        perTryTimeout: 30s                  # 30s per attempt
+        retryOn: connect-failure,refused-stream,unavailable
+        # NOT retrying on 5xx to avoid duplicate payments
+        # If backend returns 5xx, it might have processed the payment
+      
+      # Add idempotency key header
+      headers:
+        request:
+          add:
+            x-idempotency-key: "%REQ(x-request-id)%"
+            x-payment-timestamp: "%START_TIME%"
+    
+    # ==========================================================================
+    # ROUTE 2: Get My Payments (User's own payments)
+    # ==========================================================================
+    - name: "my-payments"
+      match:
+        - uri:
+            exact: /api/payments/my
+          method:
+            exact: GET
+      route:
+        - destination:
+            host: payment-service
+            port:
+              number: 8083
+      timeout: 15s
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: 5xx,reset
+    
+    # ==========================================================================
+    # ROUTE 3: List All Payments (Admin only)
+    # ==========================================================================
+    - name: "list-payments"
+      match:
+        - uri:
+            prefix: /api/payments
+          method:
+            exact: GET
+      route:
+        - destination:
+            host: payment-service
+            port:
+              number: 8083
+      timeout: 20s
+      retries:
+        attempts: 3
+        perTryTimeout: 7s
+        retryOn: 5xx
+    
+    # ==========================================================================
+    # ROUTE 4: Update Payment Status (Admin only)
+    # ==========================================================================
+    - name: "update-status"
+      match:
+        - uri:
+            regex: "^/api/payments/[0-9]+/status$"
+          method:
+            exact: PATCH
+      route:
+        - destination:
+            host: payment-service
+            port:
+              number: 8083
+      timeout: 30s
+      retries:
+        attempts: 1                         # No retries for state changes
+        perTryTimeout: 30s
+        retryOn: connect-failure
+    
+    # ==========================================================================
+    # ROUTE 5: Get Single Payment (Admin only)
+    # ==========================================================================
+    - name: "get-payment"
+      match:
+        - uri:
+            regex: "^/api/payments/[0-9]+$"
+          method:
+            exact: GET
+      route:
+        - destination:
+            host: payment-service
+            port:
+              number: 8083
+      timeout: 10s
+      retries:
+        attempts: 3
+        perTryTimeout: 3s
+        retryOn: 5xx
+    
+    # ==========================================================================
+    # ROUTE 6: Health Check
+    # ==========================================================================
+    - name: "health"
+      match:
+        - uri:
+            exact: /health
+      route:
+        - destination:
+            host: payment-service
+            port:
+              number: 8083
+      timeout: 5s
+    
+    # ==========================================================================
+    # ROUTE 7: Default
+    # ==========================================================================
+    - name: "default"
+      route:
+        - destination:
+            host: payment-service
+            port:
+              number: 8083
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: 5xx,reset
+
+---
+# ==============================================================================
+# SPECIAL CONSIDERATIONS FOR PAYMENT SERVICE
+# ==============================================================================
+#
+# 1. IDEMPOTENCY:
+#    Payment operations MUST be idempotent
+#    - Use idempotency keys
+#    - Don't blindly retry all errors
+#    - Only retry network-level failures
+#
+# 2. RETRY POLICY:
+#    Conservative retry policy to avoid duplicate charges
+#    - Only retry on connection failures
+#    - Do NOT retry on 5xx (might be already processed)
+#    - Max 2 attempts
+#
+# 3. TIMEOUT:
+#    Longer timeouts for payment processing
+#    - Create payment: 60s (calls multiple services + Kafka)
+#    - Read operations: 10-20s
+#
+# 4. CIRCUIT BREAKING:
+#    Important for payment service to fail fast
+#    - If inventory service is down, don't keep trying
+#    - Defined in DestinationRule
+#
+# 5. DISTRIBUTED TRANSACTION:
+#    Payment Service orchestrates:
+#      1. Check inventory (gRPC to inventory-service)
+#      2. Create payment record (database)
+#      3. Publish event (Kafka)
+#    All steps must complete or rollback
+#
+# ==============================================================================
+
