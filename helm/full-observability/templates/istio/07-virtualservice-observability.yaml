@@ -1,0 +1,107 @@
+# ==============================================================================
+# VIRTUALSERVICE - GRAFANA
+# ==============================================================================
+# Purpose: Route external traffic to Grafana dashboard
+# Gateway: monitoring-gateway
+# ==============================================================================
+
+{{- if .Values.grafana.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: grafana-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: grafana
+    component: routing
+spec:
+  hosts:
+    - "grafana.example.com"
+    - grafana
+  
+  gateways:
+    - monitoring-gateway
+    - mesh
+  
+  http:
+    - name: "grafana-ui"
+      route:
+        - destination:
+            host: grafana
+            port:
+              number: 3000
+      timeout: 30s
+{{- end }}
+
+---
+# ==============================================================================
+# VIRTUALSERVICE - JAEGER
+# ==============================================================================
+# Purpose: Route external traffic to Jaeger UI
+# Gateway: monitoring-gateway
+# ==============================================================================
+
+{{- if .Values.jaeger.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: jaeger-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: jaeger
+    component: routing
+spec:
+  hosts:
+    - "jaeger.example.com"
+    - jaeger
+  
+  gateways:
+    - monitoring-gateway
+    - mesh
+  
+  http:
+    - name: "jaeger-ui"
+      route:
+        - destination:
+            host: jaeger
+            port:
+              number: 16686
+      timeout: 30s
+{{- end }}
+
+---
+# ==============================================================================
+# VIRTUALSERVICE - PROMETHEUS (Optional - usually internal only)
+# ==============================================================================
+# Purpose: Route to Prometheus UI (dev/debugging only)
+# Gateway: monitoring-gateway
+# ==============================================================================
+
+{{- if .Values.prometheus.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: prometheus-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: prometheus
+    component: routing
+spec:
+  hosts:
+    - "prometheus.example.com"
+    - prometheus
+  
+  gateways:
+    - monitoring-gateway
+    - mesh
+  
+  http:
+    - name: "prometheus-ui"
+      route:
+        - destination:
+            host: prometheus
+            port:
+              number: 9090
+      timeout: 30s
+{{- end }}
+
