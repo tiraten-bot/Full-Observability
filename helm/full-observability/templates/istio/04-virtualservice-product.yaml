@@ -1,0 +1,119 @@
+# ==============================================================================
+# VIRTUALSERVICE - PRODUCT SERVICE
+# ==============================================================================
+# Purpose: Routing rules for Product Service
+# Access: Via API Gateway (HTTP) and other services (gRPC)
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: product-service-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: product-service
+    component: routing
+spec:
+  hosts:
+    - product-service
+    - product-service.observability.svc.cluster.local
+  
+  gateways:
+    - mesh
+  
+  http:
+    # Product listing (potentially high traffic)
+    - name: "list-products"
+      match:
+        - uri:
+            prefix: /api/products
+          method:
+            exact: GET
+      route:
+        - destination:
+            host: product-service
+            port:
+              number: 8081
+      timeout: 15s
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: 5xx,reset
+    
+    # Create/Update/Delete products (admin only, slower)
+    - name: "modify-products"
+      match:
+        - uri:
+            prefix: /api/products
+          method:
+            regex: "POST|PUT|DELETE|PATCH"
+      route:
+        - destination:
+            host: product-service
+            port:
+              number: 8081
+      timeout: 30s
+      retries:
+        attempts: 2
+        perTryTimeout: 15s
+        retryOn: 5xx
+    
+    # Health check
+    - name: "health"
+      match:
+        - uri:
+            exact: /health
+      route:
+        - destination:
+            host: product-service
+            port:
+              number: 8081
+      timeout: 5s
+    
+    # Default route
+    - name: "default"
+      route:
+        - destination:
+            host: product-service
+            port:
+              number: 8081
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: 5xx,reset
+
+---
+# gRPC VirtualService for Product Service
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: product-service-grpc-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: product-service
+    component: grpc-routing
+spec:
+  hosts:
+    - product-service
+  
+  gateways:
+    - mesh
+  
+  http:
+    - name: "grpc-product"
+      match:
+        - headers:
+            "content-type":
+              prefix: "application/grpc"
+      route:
+        - destination:
+            host: product-service
+            port:
+              number: 9091
+      timeout: 20s
+      retries:
+        attempts: 3
+        perTryTimeout: 7s
+        retryOn: cancelled,deadline-exceeded,unavailable
+
