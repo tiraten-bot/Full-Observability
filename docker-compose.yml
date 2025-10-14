@@ -177,6 +177,11 @@ services:
       PRODUCT_SERVICE_URL: http://product-service:8081
       INVENTORY_SERVICE_URL: http://inventory-service:8082
       PAYMENT_SERVICE_URL: http://payment-service:8083
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: api-gateway
+      ENVIRONMENT: production
+      LOG_LEVEL: info
     ports:
       - "8000:8000"  # API Gateway
     depends_on:
@@ -184,6 +189,7 @@ services:
       - product-service
       - inventory-service
       - payment-service
+      - jaeger
     networks:
       - observability-network
     restart: unless-stopped
