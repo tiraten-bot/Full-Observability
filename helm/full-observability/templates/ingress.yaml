@@ -1,13 +1,76 @@
 {{- if .Values.ingress.enabled }}
+# ==============================================================================
+# INGRESS - API GATEWAY
+# ==============================================================================
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: full-observability-ingress
+  name: api-gateway-ingress
   namespace: {{ .Values.global.namespace }}
+  labels:
+    app: api-gateway
+    component: ingress
   annotations:
-    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+    # Ingress Class
+    kubernetes.io/ingress.class: {{ .Values.ingress.className }}
+    
+    # SSL/TLS Configuration
+    {{- if .Values.ingress.tls }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.annotations."cert-manager.io/cluster-issuer" | default "letsencrypt-prod" }}
+    {{- end }}
+    
+    # NGINX Specific Annotations
+    nginx.ingress.kubernetes.io/ssl-redirect: {{ .Values.ingress.annotations."nginx.ingress.kubernetes.io/ssl-redirect" | default "true" | quote }}
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+    
+    # CORS Configuration
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    nginx.ingress.kubernetes.io/cors-expose-headers: "Content-Length,Content-Range"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-max-age: "3600"
+    
+    # Rate Limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+    
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-next-upstream-timeout: "30"
+    
+    # Body Size
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    
+    # Buffering
+    nginx.ingress.kubernetes.io/proxy-buffering: "on"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "8k"
+    
+    # Websocket Support
+    nginx.ingress.kubernetes.io/websocket-services: "api-gateway"
+    
+    # Security Headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()";
+    
+    # Custom annotations from values
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
+  
   {{- if .Values.ingress.tls }}
   tls:
     {{- range .Values.ingress.tls }}
@@ -18,6 +81,7 @@ spec:
       secretName: {{ .secretName }}
     {{- end }}
   {{- end }}
+  
   rules:
     {{- range .Values.ingress.hosts }}
     - host: {{ .host | quote }}
@@ -33,5 +97,176 @@ spec:
                   number: {{ .port }}
           {{- end }}
     {{- end }}
+
+---
+# ==============================================================================
+# INGRESS - GRAFANA
+# ==============================================================================
+{{- if .Values.grafana.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: grafana
+    component: ingress
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className }}
+    {{- if .Values.ingress.tls }}
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    {{- end }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: grafana-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required - Grafana"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ (index .Values.ingress.hosts 1).host | quote }}
+      secretName: grafana-tls
+  {{- end }}
+  rules:
+    - host: {{ (index .Values.ingress.hosts 1).host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
 {{- end }}
 
+---
+# ==============================================================================
+# INGRESS - JAEGER
+# ==============================================================================
+{{- if .Values.jaeger.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger-ingress
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: jaeger
+    component: ingress
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className }}
+    {{- if .Values.ingress.tls }}
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    {{- end }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: jaeger-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required - Jaeger"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ (index .Values.ingress.hosts 2).host | quote }}
+      secretName: jaeger-tls
+  {{- end }}
+  rules:
+    - host: {{ (index .Values.ingress.hosts 2).host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686
+{{- end }}
+
+---
+# ==============================================================================
+# INGRESS - PROMETHEUS (Optional - for direct access)
+# ==============================================================================
+{{- if and .Values.prometheus.enabled (eq .Values.global.environment "development") }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-ingress
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: prometheus
+    component: ingress
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: prometheus-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required - Prometheus"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: prometheus.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus
+                port:
+                  number: 9090
+{{- end }}
+
+---
+# ==============================================================================
+# BASIC AUTH SECRETS (for Grafana, Jaeger, Prometheus)
+# ==============================================================================
+# Generate password: htpasswd -nb admin password | base64
+# Example: admin:$apr1$xxx...xxx (base64 encoded)
+{{- if .Values.grafana.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-basic-auth
+  namespace: {{ .Values.global.namespace }}
+type: Opaque
+data:
+  # admin:admin (change in production)
+  # Generated with: echo "admin:$(openssl passwd -apr1 admin)" | base64
+  auth: YWRtaW46JGFwcjEkUy5lN3RQRkkkQ3pGM0FNMWFFL3NHMWxGaVJqcGxGLgo=
+{{- end }}
+
+---
+{{- if .Values.jaeger.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jaeger-basic-auth
+  namespace: {{ .Values.global.namespace }}
+type: Opaque
+data:
+  # admin:admin (change in production)
+  auth: YWRtaW46JGFwcjEkUy5lN3RQRkkkQ3pGM0FNMWFFL3NHMWxGaVJqcGxGLgo=
+{{- end }}
+
+---
+{{- if and .Values.prometheus.enabled (eq .Values.global.environment "development") }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-basic-auth
+  namespace: {{ .Values.global.namespace }}
+type: Opaque
+data:
+  # admin:admin (change in production)
+  auth: YWRtaW46JGFwcjEkUy5lN3RQRkkkQ3pGM0FNMWFFL3NHMWxGaVJqcGxGLgo=
+{{- end }}
+
+{{- end }}
