@@ -1,0 +1,248 @@
+# ==============================================================================
+# VIRTUALSERVICE - API GATEWAY
+# ==============================================================================
+# Purpose: Route external traffic from Gateway to API Gateway service
+#
+# WHAT IS VIRTUALSERVICE?
+#   VirtualService defines HOW requests are routed to services
+#   It's like a smart router with advanced features:
+#     - URL-based routing
+#     - Header-based routing
+#     - Weighted routing (canary/blue-green)
+#     - Retries, timeouts, fault injection
+#
+# FLOW: Gateway → VirtualService → Kubernetes Service → Pod
+#
+# KEY CONCEPTS:
+#   - hosts: Which service this VirtualService applies to
+#   - gateways: Which Gateway(s) this VirtualService is attached to
+#   - http: HTTP routing rules (match, route, retry, timeout, etc.)
+#   - match: Conditions to match requests (URI, headers, method, etc.)
+#   - route: Where to send matched requests (destination service)
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: api-gateway-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: api-gateway
+    component: routing
+  annotations:
+    description: "Main routing for API Gateway - entry point for all API traffic"
+spec:
+  # ============================================================================
+  # HOSTS: Which hosts does this VirtualService apply to?
+  # ============================================================================
+  # These are the SERVICE names, not domain names
+  # - "api-gateway" = Kubernetes service name
+  # - "api.example.com" = External domain name
+  hosts:
+    - "api.example.com"           # External domain (from internet)
+    - "api-gateway"               # Internal service name
+    - "api-gateway.observability.svc.cluster.local"  # FQDN
+  
+  # ============================================================================
+  # GATEWAYS: Which Gateway(s) to attach to
+  # ============================================================================
+  # This VirtualService applies to traffic coming through these Gateways
+  # Special value: "mesh" = internal traffic (service-to-service)
+  gateways:
+    - main-gateway              # External traffic (from internet)
+    - mesh                      # Internal traffic (service-to-service)
+  
+  # ============================================================================
+  # HTTP ROUTING RULES
+  # ============================================================================
+  http:
+    # ==========================================================================
+    # ROUTE 1: Health Check (highest priority)
+    # ==========================================================================
+    - name: "health-check"
+      match:
+        - uri:
+            exact: /health        # Exact match
+      route:
+        - destination:
+            host: api-gateway     # Kubernetes service name
+            port:
+              number: 8000
+      # No retries for health checks
+      retries:
+        attempts: 0
+      timeout: 5s
+    
+    # ==========================================================================
+    # ROUTE 2: Metrics Endpoint (Prometheus scraping)
+    # ==========================================================================
+    - name: "metrics"
+      match:
+        - uri:
+            exact: /metrics
+      route:
+        - destination:
+            host: api-gateway
+            port:
+              number: 8000
+      timeout: 10s
+    
+    # ==========================================================================
+    # ROUTE 3: All API Traffic (default route)
+    # ==========================================================================
+    - name: "default-route"
+      # No match = catch-all (lowest priority)
+      route:
+        - destination:
+            host: api-gateway
+            port:
+              number: 8000
+      
+      # ========================================================================
+      # RETRY POLICY
+      # ========================================================================
+      # Automatically retry failed requests
+      retries:
+        attempts: 3                           # Retry 3 times
+        perTryTimeout: 2s                     # Each attempt timeout
+        retryOn: 5xx,reset,connect-failure    # Retry conditions:
+          # - 5xx: Server errors (500, 502, 503, 504)
+          # - reset: Connection reset
+          # - connect-failure: Cannot connect to upstream
+          # - refused-stream: gRPC REFUSED_STREAM
+          # - cancelled: gRPC CANCELLED
+          # - deadline-exceeded: gRPC DEADLINE_EXCEEDED
+          # - resource-exhausted: gRPC RESOURCE_EXHAUSTED
+          # - unavailable: gRPC UNAVAILABLE
+      
+      # ========================================================================
+      # TIMEOUT
+      # ========================================================================
+      # Total request timeout (including all retries)
+      timeout: 30s
+      
+      # ========================================================================
+      # FAULT INJECTION (for testing - disabled by default)
+      # ========================================================================
+      # Inject delays or errors for chaos engineering
+      # fault:
+      #   delay:
+      #     percentage:
+      #       value: 10.0           # 10% of requests
+      #     fixedDelay: 5s          # 5 second delay
+      #   abort:
+      #     percentage:
+      #       value: 5.0            # 5% of requests
+      #     httpStatus: 503         # Return 503 error
+      
+      # ========================================================================
+      # HEADERS (Add/Remove headers)
+      # ========================================================================
+      headers:
+        request:
+          add:
+            x-gateway: "istio-gateway"           # Add custom header
+            x-forwarded-proto: "https"           # Protocol info
+          # remove:
+          #   - x-legacy-header                   # Remove headers
+        response:
+          add:
+            x-powered-by: "istio-service-mesh"
+            x-content-type-options: "nosniff"
+          remove:
+            - x-envoy-upstream-service-time       # Hide internal metrics
+      
+      # ========================================================================
+      # CORS POLICY (Cross-Origin Resource Sharing)
+      # ========================================================================
+      corsPolicy:
+        allowOrigins:
+          - exact: "https://app.example.com"
+          - regex: "https://.*\\.example\\.com"
+        allowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        allowHeaders:
+          - content-type
+          - authorization
+          - x-requested-with
+        exposeHeaders:
+          - content-length
+          - x-request-id
+        maxAge: "24h"
+        allowCredentials: true
+      
+      # ========================================================================
+      # MIRROR TRAFFIC (for testing new versions)
+      # ========================================================================
+      # Send a copy of traffic to another service (shadow deployment)
+      # mirror:
+      #   host: api-gateway-v2
+      #   port:
+      #     number: 8000
+      # mirrorPercentage:
+      #   value: 10.0               # Mirror 10% of traffic
+
+---
+# ==============================================================================
+# VIRTUALSERVICE KEY CONCEPTS - EXPLAINED
+# ==============================================================================
+#
+# 1. ROUTING PRIORITY:
+#    Rules are evaluated TOP to BOTTOM
+#    First matching rule wins
+#    Most specific routes should be at the top
+#    Catch-all routes at the bottom
+#
+# 2. MATCH CONDITIONS (can combine multiple):
+#    - uri: exact, prefix, regex
+#    - headers: exact, prefix, regex
+#    - queryParams: exact, regex
+#    - method: GET, POST, PUT, DELETE, etc.
+#    - authority: Host header
+#    - scheme: http, https
+#    - port: number
+#    - sourceLabels: Pod labels
+#
+# 3. DESTINATION:
+#    - host: Kubernetes service name (REQUIRED)
+#    - port: Service port number
+#    - subset: Version/variant (defined in DestinationRule)
+#
+# 4. WEIGHT (for traffic splitting):
+#    route:
+#      - destination:
+#          host: api-gateway
+#          subset: v1
+#        weight: 90              # 90% of traffic
+#      - destination:
+#          host: api-gateway
+#          subset: v2
+#        weight: 10              # 10% of traffic
+#
+# 5. RETRIES:
+#    - attempts: Number of retry attempts
+#    - perTryTimeout: Timeout per attempt
+#    - retryOn: Conditions to retry (5xx, reset, etc.)
+#
+# 6. TIMEOUT:
+#    Total time for request (including retries)
+#    Default: No timeout (wait forever - NOT RECOMMENDED)
+#
+# 7. FAULT INJECTION:
+#    Test resilience by injecting failures
+#    - delay: Add latency
+#    - abort: Return errors
+#
+# ==============================================================================
+
+# NEXT: Create VirtualService for each microservice
+#   - User Service
+#   - Product Service  
+#   - Inventory Service
+#   - Payment Service
+
