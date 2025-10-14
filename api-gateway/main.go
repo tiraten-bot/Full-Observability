@@ -95,7 +95,7 @@ func main() {
 	setupMiddleware(app, redisClient, cbManager)
 
 	// Setup routes
-	routes.SetupRoutes(app, cfg, cbManager)
+	routes.SetupRoutes(app, cfg, cbManager, redisClient)
 
 	// Start server
 	go func() {
@@ -140,6 +140,15 @@ func setupMiddleware(app *fiber.App, redisClient *redis.Client, cbManager *middl
 
 	// Structured Logging (third - after tracing for trace ID)
 	app.Use(middleware.StructuredLoggingMiddleware())
+
+	// Response Caching (if Redis available, before circuit breaker)
+	if redisClient != nil {
+		cacheConfig := middleware.DefaultCacheConfig()
+		app.Use(middleware.CacheMiddleware(redisClient, cacheConfig))
+		logger.Logger.Info().
+			Dur("ttl", cacheConfig.DefaultTTL).
+			Msg("Response caching enabled (GET/HEAD only)")
+	}
 
 	// Circuit Breaker (before rate limiting to fail fast)
 	app.Use(middleware.CircuitBreakerMiddleware(cbManager))

@@ -2,9 +2,11 @@ package routes
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/tair/full-observability/api-gateway/config"
 	"github.com/tair/full-observability/api-gateway/health"
 	"github.com/tair/full-observability/api-gateway/middleware"
@@ -76,7 +78,7 @@ var Routes = []RouteDefinition{
 }
 
 // SetupRoutes configures all routes in the gateway
-func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig, cbManager *middleware.CircuitBreakerManager) {
+func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig, cbManager *middleware.CircuitBreakerManager, redisClient *redis.Client) {
 	// Create reverse proxy (with load balancers)
 	reverseProxy := proxy.NewReverseProxy(cfg)
 
@@ -139,6 +141,53 @@ func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig, cbManager *middlewar
 			"load_balancers": stats,
 		})
 	})
+
+	// Cache invalidation endpoint (admin only)
+	if redisClient != nil {
+		app.Post("/admin/cache/invalidate", func(c *fiber.Ctx) error {
+			var req struct {
+				Pattern string `json:"pattern"` // e.g., "cache:*", "cache:GET:*"
+			}
+
+			if err := c.BodyParser(&req); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": "Invalid request body",
+				})
+			}
+
+			if req.Pattern == "" {
+				req.Pattern = "cache:*" // Default: clear all cache
+			}
+
+			if err := middleware.InvalidateCache(redisClient, req.Pattern); err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to invalidate cache",
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"message": fmt.Sprintf("Cache invalidated for pattern: %s", req.Pattern),
+			})
+		})
+
+		// Cache stats endpoint
+		app.Get("/admin/cache/stats", func(c *fiber.Ctx) error {
+			ctx := context.Background()
+			
+			// Count cache keys
+			cacheKeys := 0
+			iter := redisClient.Scan(ctx, 0, "cache:*", 0).Iterator()
+			for iter.Next(ctx) {
+				cacheKeys++
+			}
+
+			return c.JSON(fiber.Map{
+				"cache_keys": cacheKeys,
+				"redis_addr": redisClient.Options().Addr,
+			})
+		})
+	}
 
 	// API routes overview
 	app.Get("/", func(c *fiber.Ctx) error {
