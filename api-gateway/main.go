@@ -78,6 +78,9 @@ func main() {
 	// Load configuration
 	cfg := config.LoadConfig()
 
+	// Initialize circuit breaker manager
+	cbManager := middleware.NewCircuitBreakerManager()
+
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		AppName:           "API Gateway",
@@ -89,10 +92,10 @@ func main() {
 	})
 
 	// Global middleware
-	setupMiddleware(app, redisClient)
+	setupMiddleware(app, redisClient, cbManager)
 
 	// Setup routes
-	routes.SetupRoutes(app, cfg)
+	routes.SetupRoutes(app, cfg, cbManager)
 
 	// Start server
 	go func() {
@@ -123,7 +126,7 @@ func main() {
 }
 
 // setupMiddleware configures global middleware
-func setupMiddleware(app *fiber.App, redisClient *redis.Client) {
+func setupMiddleware(app *fiber.App, redisClient *redis.Client, cbManager *middleware.CircuitBreakerManager) {
 	// Recover from panics
 	app.Use(recover.New(recover.Config{
 		EnableStackTrace: true,
@@ -137,6 +140,10 @@ func setupMiddleware(app *fiber.App, redisClient *redis.Client) {
 
 	// Structured Logging (third - after tracing for trace ID)
 	app.Use(middleware.StructuredLoggingMiddleware())
+
+	// Circuit Breaker (before rate limiting to fail fast)
+	app.Use(middleware.CircuitBreakerMiddleware(cbManager))
+	logger.Logger.Info().Msg("Circuit breaker enabled (5 failures, 30s timeout)")
 
 	// Basic Fiber Logger (optional - for quick debugging)
 	app.Use(fiberlogger.New(fiberlogger.Config{
