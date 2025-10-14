@@ -1,31 +1,31 @@
 # Full Observability Microservices
 
-Bu proje, Go ile yazılmış mikroservis mimarisi ve tam observability (gözlemlenebilirlik) özelliklerini içerir.
+This project contains a microservices architecture written in Go with complete observability features.
 
-## Servisler
+## Services
 
 ### 1. User Service (Port: 8080, 9090)
-- Kullanıcı yönetimi (CRUD)
-- gRPC ve HTTP desteği
+- User management (CRUD)
+- gRPC and HTTP support
 - CQRS pattern
 - JWT authentication
 
 ### 2. Product Service (Port: 8081)
-- Ürün yönetimi (CRUD)
+- Product management (CRUD)
 - **CQRS Pattern** (Command Query Responsibility Segregation)
 - **JWT Authentication** (Admin endpoints protected)
 - **Role-based Authorization** (Admin/Public endpoints)
-- Stok yönetimi
-- Kategori bazlı filtreleme
-- İstatistik endpoint'i
+- Stock management
+- Category-based filtering
+- Statistics endpoint
 - REST API
 
 ## Observability Stack
 
-- **Prometheus** (Port: 9091) - Metrics toplama
-- **Grafana** (Port: 3000) - Görselleştirme (admin/admin)
+- **Prometheus** (Port: 9091) - Metrics collection
+- **Grafana** (Port: 3000) - Visualization (admin/admin)
 - **Jaeger** (Port: 16686) - Distributed tracing
-- **PostgreSQL** (Port: 5432) - Veritabanı
+- **PostgreSQL** (Port: 5432) - Database
 
 ```mermaid
 graph TB
@@ -82,25 +82,25 @@ sequenceDiagram
     H-->>P: Prometheus Format Data
 ```
 
-## Hızlı Başlangıç
+## Quick Start
 
-### Tüm servisleri çalıştır
+### Run all services
 ```bash
 make docker-up
 ```
 
-### Servisleri test et
+### Test services
 ```bash
 # Product API test
 ./scripts/test-product-api.sh
 ```
 
-### Servisleri durdur
+### Stop services
 ```bash
 make docker-down
 ```
 
-### Yerel geliştirme
+### Local development
 ```bash
 # User service
 make run-user
@@ -248,4 +248,3 @@ timeline
     Grafana Query : Admin queries metrics via PromQL
     Visualization : Dashboard shows real-time graphs
 ```
-
