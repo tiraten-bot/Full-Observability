@@ -12,7 +12,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 
+	_ "github.com/tair/full-observability/cmd/payment/docs"
 	"github.com/tair/full-observability/internal/payment"
 	"github.com/tair/full-observability/internal/payment/domain"
 	"github.com/tair/full-observability/internal/payment/handler"
@@ -20,6 +22,32 @@ import (
 	"github.com/tair/full-observability/pkg/logger"
 	"github.com/tair/full-observability/pkg/tracing"
 )
+
+// @title Payment Service API
+// @version 1.0
+// @description Microservice for payment management with full observability stack (Prometheus, Jaeger, Grafana)
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url http://github.com/ozturkeniss/Full-Observability
+// @contact.email support@example.com
+
+// @license.name MIT
+// @license.url https://github.com/ozturkeniss/Full-Observability/blob/main/LICENSE
+
+// @host localhost:8083
+// @BasePath /
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
+
+// @tag.name Payments
+// @tag.description Payment management endpoints
+
+// @tag.name Health
+// @tag.description Health check endpoints
 
 func main() {
 	// Initialize logger
@@ -129,6 +157,9 @@ func startHTTPServer(paymentHandler *handler.PaymentHandler, db *sql.DB, port st
 
 	// Health check endpoint
 	paymentHandler.RegisterHealthCheck(router, db)
+
+	// Swagger documentation
+	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
 	// Prometheus metrics endpoint
 	router.Handle("/metrics", promhttp.Handler())
