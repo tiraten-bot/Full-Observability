@@ -1,0 +1,395 @@
+# ==============================================================================
+# AUTHORIZATION POLICY - Service-to-Service Access Control
+# ==============================================================================
+# Purpose: Define WHO can call WHAT
+#
+# WHAT IS AUTHORIZATION POLICY?
+#   After mTLS proves identity (authentication),
+#   AuthorizationPolicy decides if that identity has permission (authorization)
+#
+# ANALOGY:
+#   mTLS = ID Card (proves who you are)
+#   AuthorizationPolicy = Security Guard (checks if you can enter)
+#
+# FLOW:
+#   Payment Service → mTLS → "I am payment-service" → Inventory Service
+#                  → AuthorizationPolicy checks → "Can payment-service call me?"
+#                  → YES → Allow
+#                  → NO → Deny (403 Forbidden)
+#
+# ==============================================================================
+
+# ==============================================================================
+# DENY ALL BY DEFAULT (Zero-Trust Foundation)
+# ==============================================================================
+# Purpose: Start with deny-all, then explicitly allow what's needed
+# This is the security best practice: "Everything forbidden unless allowed"
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: authorization
+    policy: deny-all
+spec:
+  # Empty spec = deny all traffic
+  # This is overridden by more specific allow policies below
+
+---
+# ==============================================================================
+# ALLOW: API Gateway → All Microservices
+# ==============================================================================
+# Purpose: API Gateway can call all backend services
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-api-gateway-to-services
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: authorization
+spec:
+  # This policy applies TO these services (destination)
+  selector:
+    matchLabels:
+      component: microservice      # All microservices
+  
+  # ALLOW traffic
+  action: ALLOW
+  
+  rules:
+    # FROM api-gateway
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/{{ .Values.global.namespace }}/sa/api-gateway"
+      
+      # TO any HTTP method
+      to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+
+---
+# ==============================================================================
+# ALLOW: Payment Service → User Service (gRPC)
+# ==============================================================================
+# Purpose: Payment Service needs to validate users
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-payment-to-user
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: user-service
+  
+  action: ALLOW
+  
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/{{ .Values.global.namespace }}/sa/payment-service"
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/user.UserService/*"]    # gRPC methods
+
+---
+# ==============================================================================
+# ALLOW: Payment Service → Product Service (gRPC)
+# ==============================================================================
+# Purpose: Payment Service needs to validate products
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-payment-to-product
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: product-service
+  
+  action: ALLOW
+  
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/{{ .Values.global.namespace }}/sa/payment-service"
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/product.ProductService/*"]
+
+---
+# ==============================================================================
+# ALLOW: Payment Service → Inventory Service (gRPC)
+# ==============================================================================
+# Purpose: Payment Service checks stock availability
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-payment-to-inventory
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: inventory-service
+  
+  action: ALLOW
+  
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/{{ .Values.global.namespace }}/sa/payment-service"
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/inventory.InventoryService/CheckAvailability"]
+
+---
+# ==============================================================================
+# ALLOW: Product Service → User Service (gRPC)
+# ==============================================================================
+# Purpose: Product Service validates user permissions
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-product-to-user
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: user-service
+  
+  action: ALLOW
+  
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/{{ .Values.global.namespace }}/sa/product-service"
+
+---
+# ==============================================================================
+# ALLOW: All Services → Observability Stack
+# ==============================================================================
+# Purpose: All services can send metrics/traces
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-services-to-observability
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    matchLabels:
+      component: observability
+  
+  action: ALLOW
+  
+  rules:
+    # Allow all authenticated services
+    - from:
+        - source:
+            namespaces: ["{{ .Values.global.namespace }}"]
+
+---
+# ==============================================================================
+# ALLOW: Prometheus → All Services (Metrics Scraping)
+# ==============================================================================
+# Purpose: Prometheus needs to scrape /metrics endpoints
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-prometheus-scraping
+  namespace: {{ .Values.global.namespace }}
+spec:
+  # Apply to all workloads
+  action: ALLOW
+  
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/{{ .Values.global.namespace }}/sa/prometheus"
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics"]
+
+---
+# ==============================================================================
+# ALLOW: Health Check from Kubernetes
+# ==============================================================================
+# Purpose: kubelet needs to check pod health (liveness/readiness probes)
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-health-checks
+  namespace: {{ .Values.global.namespace }}
+spec:
+  action: ALLOW
+  
+  rules:
+    # Allow unauthenticated health checks
+    - to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/health", "/ready", "/healthz", "/readyz"]
+
+---
+# ==============================================================================
+# DENY: Specific Forbidden Operations
+# ==============================================================================
+# Purpose: Explicitly deny dangerous operations
+# Example: Prevent direct database access from certain services
+# ==============================================================================
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-direct-database-access
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  
+  # DENY action (overrides ALLOW policies)
+  action: DENY
+  
+  rules:
+    # Deny access from api-gateway (gateway should not access DB directly)
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/{{ .Values.global.namespace }}/sa/api-gateway"
+
+---
+# ==============================================================================
+# AUTHORIZATION POLICY - KEY CONCEPTS
+# ==============================================================================
+#
+# 1. EVALUATION ORDER:
+#    
+#    Step 1: Check CUSTOM action policies first (if any)
+#    Step 2: Check DENY policies (any deny = request denied)
+#    Step 3: Check ALLOW policies (must match at least one)
+#    Step 4: If no ALLOW policies exist = allow all (default allow)
+#    Step 5: If ALLOW policies exist but none match = deny
+#
+# 2. SELECTORS:
+#    
+#    selector:
+#      matchLabels:
+#        app: user-service       # Apply TO user-service
+#    
+#    Selects the TARGET service (destination)
+#
+# 3. FROM (Source):
+#    
+#    from:
+#      - source:
+#          principals:             # SPIFFE ID
+#            - "cluster.local/ns/observability/sa/payment-service"
+#          namespaces:             # Any service in namespace
+#            - "observability"
+#          ipBlocks:               # IP address
+#            - "10.0.0.0/24"
+#          requestPrincipals:      # JWT identity
+#            - "user@example.com"
+#
+# 4. TO (Operation):
+#    
+#    to:
+#      - operation:
+#          methods:                # HTTP methods
+#            - GET
+#            - POST
+#          paths:                  # URL paths
+#            - /api/users/*
+#          ports:                  # Ports
+#            - "8080"
+#          hosts:                  # Hosts
+#            - user-service
+#
+# 5. WHEN (Conditions):
+#    
+#    when:
+#      - key: request.headers[x-api-key]
+#        values: ["secret-key"]
+#      - key: source.ip
+#        notValues: ["1.2.3.4"]
+#      - key: request.auth.claims[iss]
+#        values: ["https://accounts.google.com"]
+#
+# 6. PRINCIPALS (Service Identity):
+#    
+#    Format: cluster.local/ns/<namespace>/sa/<serviceaccount>
+#    
+#    Default ServiceAccount = deployment name
+#    Example:
+#      Deployment: user-service
+#      ServiceAccount: user-service (auto-created)
+#      Principal: cluster.local/ns/observability/sa/user-service
+#
+# ==============================================================================
+
+---
+# ==============================================================================
+# REAL-WORLD EXAMPLE: Payment Service Security
+# ==============================================================================
+#
+# REQUIREMENT:
+#   - Only authenticated users can create payments
+#   - Only payment-service can call inventory-service.CheckAvailability
+#   - Only admins can update payment status
+#   - No service can directly access database
+#
+# IMPLEMENTATION:
+#
+# 1. mTLS (PeerAuthentication):
+#      mode: STRICT
+#      → All connections encrypted
+#
+# 2. AuthorizationPolicy (Service-to-Service):
+#      allow-payment-to-inventory:
+#        FROM: payment-service
+#        TO: inventory-service
+#        OPERATION: CheckAvailability method only
+#
+# 3. AuthorizationPolicy (User-to-Service):
+#      allow-authenticated-users:
+#        FROM: Valid JWT token
+#        TO: payment-service
+#        OPERATION: POST /api/payments
+#
+# 4. AuthorizationPolicy (Database Protection):
+#      deny-direct-database-access:
+#        TO: postgres
+#        FROM: api-gateway
+#        ACTION: DENY
+#
+# ==============================================================================
+
