@@ -1,8 +1,12 @@
 package routes
 
 import (
+	"context"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/tair/full-observability/api-gateway/config"
+	"github.com/tair/full-observability/api-gateway/health"
 	"github.com/tair/full-observability/api-gateway/middleware"
 	"github.com/tair/full-observability/api-gateway/proxy"
 )
@@ -76,12 +80,43 @@ func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig) {
 	// Create reverse proxy
 	reverseProxy := proxy.NewReverseProxy(cfg)
 
-	// Gateway health check
+	// Create health checker
+	healthChecker := health.NewHealthChecker(cfg)
+
+	// Gateway quick health check (no downstream checks)
 	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(healthChecker.QuickCheck())
+	})
+
+	// Liveness probe (for Kubernetes)
+	app.Get("/health/live", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
-			"status":  "healthy",
-			"service": "api-gateway",
+			"status": "alive",
 		})
+	})
+
+	// Readiness probe (checks downstream services)
+	app.Get("/health/ready", func(c *fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.UserContext(), 3*time.Second)
+		defer cancel()
+
+		healthStatus := healthChecker.CheckAllServices(ctx)
+		
+		statusCode := fiber.StatusOK
+		if healthStatus.Status == "unhealthy" {
+			statusCode = fiber.StatusServiceUnavailable
+		}
+
+		return c.Status(statusCode).JSON(healthStatus)
+	})
+
+	// Detailed service health checks
+	app.Get("/health/services", func(c *fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.UserContext(), 5*time.Second)
+		defer cancel()
+
+		healthStatus := healthChecker.CheckAllServices(ctx)
+		return c.JSON(healthStatus)
 	})
 
 	// API routes overview
@@ -90,21 +125,6 @@ func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig) {
 			"message": "API Gateway",
 			"version": "1.0.0",
 			"routes":  Routes,
-		})
-	})
-
-	// Service health checks
-	app.Get("/health/services", func(c *fiber.Ctx) error {
-		services := make(map[string]interface{})
-		for name, svc := range cfg.Services {
-			services[name] = fiber.Map{
-				"url":    svc.BaseURL,
-				"status": "unknown", // TODO: Implement actual health check
-			}
-		}
-		return c.JSON(fiber.Map{
-			"gateway": "healthy",
-			"services": services,
 		})
 	})
 
