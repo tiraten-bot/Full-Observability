@@ -19,6 +19,15 @@ type ReverseProxy struct {
 	config        *config.GatewayConfig
 	client        *http.Client
 	loadBalancers map[string]*loadbalancer.RoundRobin
+	retryConfig   RetryConfig
+}
+
+// RetryConfig holds retry configuration for proxy
+type RetryConfig struct {
+	MaxAttempts  int
+	InitialDelay time.Duration
+	MaxDelay     time.Duration
+	Multiplier   float64
 }
 
 // NewReverseProxy creates a new reverse proxy
@@ -33,79 +42,172 @@ func NewReverseProxy(cfg *config.GatewayConfig) *ReverseProxy {
 	return &ReverseProxy{
 		config:        cfg,
 		loadBalancers: loadBalancers,
+		retryConfig: RetryConfig{
+			MaxAttempts:  3,
+			InitialDelay: 100 * time.Millisecond,
+			MaxDelay:     2 * time.Second,
+			Multiplier:   2.0,
+		},
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
 }
 
-// ProxyRequest forwards the request to the target service
+// ProxyRequest forwards the request to the target service with retry logic
 func (p *ReverseProxy) ProxyRequest(c *fiber.Ctx, serviceName string) error {
-	// Get next server from load balancer
-	lb, lbExists := p.loadBalancers[serviceName]
-	if !lbExists {
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
-			"error": fmt.Sprintf("Load balancer for '%s' not found", serviceName),
-		})
+	// Check if method is idempotent (only retry safe methods)
+	isIdempotent := isIdempotentMethod(c.Method())
+	maxAttempts := 1
+	if isIdempotent {
+		maxAttempts = p.retryConfig.MaxAttempts
 	}
 
-	serverURL := lb.Next()
-	if serverURL == "" {
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
-			"error": fmt.Sprintf("No available instances for '%s'", serviceName),
-		})
+	// Save request body for retries
+	bodyBytes := c.Body()
+
+	var lastErr error
+	delay := p.retryConfig.InitialDelay
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// Get next server from load balancer
+		lb, lbExists := p.loadBalancers[serviceName]
+		if !lbExists {
+			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+				"error": fmt.Sprintf("Load balancer for '%s' not found", serviceName),
+			})
+		}
+
+		serverURL := lb.Next()
+		if serverURL == "" {
+			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+				"error": fmt.Sprintf("No available instances for '%s'", serviceName),
+			})
+		}
+
+		if attempt > 0 {
+			logger.Logger.Info().
+				Str("service", serviceName).
+				Str("target_url", serverURL).
+				Int("attempt", attempt+1).
+				Msg("Retrying request with different instance")
+		} else {
+			logger.Logger.Debug().
+				Str("service", serviceName).
+				Str("target_url", serverURL).
+				Str("path", c.Path()).
+				Msg("Load balancer selected instance")
+		}
+
+		// Build target URL
+		targetURL := p.buildTargetURLWithServer(c, serverURL)
+
+		// Create new request
+		req, err := http.NewRequest(
+			c.Method(),
+			targetURL,
+			bytes.NewReader(bodyBytes),
+		)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		// Copy headers from original request
+		p.copyHeaders(c, req)
+
+		// Execute request
+		resp, err := p.client.Do(req)
+		if err != nil {
+			lastErr = err
+			
+			// Retry if not last attempt
+			if attempt < maxAttempts-1 {
+				logger.Logger.Warn().
+					Err(err).
+					Str("service", serviceName).
+					Int("attempt", attempt+1).
+					Dur("delay", delay).
+					Msg("Request failed, retrying...")
+				
+				time.Sleep(delay)
+				delay = time.Duration(float64(delay) * p.retryConfig.Multiplier)
+				if delay > p.retryConfig.MaxDelay {
+					delay = p.retryConfig.MaxDelay
+				}
+				continue
+			}
+			
+			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+				"error":   "Failed to reach backend service",
+				"service": serviceName,
+				"details": err.Error(),
+			})
+		}
+		defer resp.Body.Close()
+
+		// Check if status code is retryable (502, 503, 504)
+		if resp.StatusCode >= 502 && resp.StatusCode <= 504 && attempt < maxAttempts-1 {
+			logger.Logger.Warn().
+				Int("status", resp.StatusCode).
+				Str("service", serviceName).
+				Int("attempt", attempt+1).
+				Dur("delay", delay).
+				Msg("Retryable status code, retrying...")
+			
+			time.Sleep(delay)
+			delay = time.Duration(float64(delay) * p.retryConfig.Multiplier)
+			if delay > p.retryConfig.MaxDelay {
+				delay = p.retryConfig.MaxDelay
+			}
+			continue
+		}
+
+		// Success - copy response
+		p.copyResponseHeaders(c, resp)
+		c.Status(resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to read response",
+			})
+		}
+
+		if attempt > 0 {
+			logger.Logger.Info().
+				Str("service", serviceName).
+				Int("attempt", attempt+1).
+				Int("status", resp.StatusCode).
+				Msg("Request succeeded after retry")
+		}
+
+		return c.Send(body)
 	}
 
-	logger.Logger.Debug().
-		Str("service", serviceName).
-		Str("target_url", serverURL).
-		Str("path", c.Path()).
-		Msg("Load balancer selected instance")
-
-	// Build target URL
-	targetURL := p.buildTargetURLWithServer(c, serverURL)
-
-	// Create new request
-	req, err := http.NewRequest(
-		c.Method(),
-		targetURL,
-		bytes.NewReader(c.Body()),
-	)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create request",
-		})
+	// All retries failed
+	errorDetails := "Unknown error"
+	if lastErr != nil {
+		errorDetails = lastErr.Error()
 	}
+	
+	return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
+		"error":   "All retry attempts failed",
+		"service": serviceName,
+		"details": errorDetails,
+	})
+}
 
-	// Copy headers from original request
-	p.copyHeaders(c, req)
-
-	// Execute request
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
-			"error":   "Failed to reach backend service",
-			"service": serviceName,
-			"details": err.Error(),
-		})
+// isIdempotentMethod checks if HTTP method is safe to retry
+func isIdempotentMethod(method string) bool {
+	idempotentMethods := map[string]bool{
+		"GET":     true,
+		"HEAD":    true,
+		"PUT":     true,
+		"DELETE":  true,
+		"OPTIONS": true,
 	}
-	defer resp.Body.Close()
-
-	// Copy response headers
-	p.copyResponseHeaders(c, resp)
-
-	// Set status code
-	c.Status(resp.StatusCode)
-
-	// Copy response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to read response",
-		})
-	}
-
-	return c.Send(body)
+	return idempotentMethods[method]
 }
 
 // buildTargetURL constructs the full URL for the backend service

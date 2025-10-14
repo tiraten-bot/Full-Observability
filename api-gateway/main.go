@@ -145,6 +145,8 @@ func setupMiddleware(app *fiber.App, redisClient *redis.Client, cbManager *middl
 	app.Use(middleware.CircuitBreakerMiddleware(cbManager))
 	logger.Logger.Info().Msg("Circuit breaker enabled (5 failures, 30s timeout)")
 
+	// Note: Retry logic is implemented in proxy layer (3 attempts, exponential backoff)
+
 	// Basic Fiber Logger (optional - for quick debugging)
 	app.Use(fiberlogger.New(fiberlogger.Config{
 		Format:     "[${time}] ${status} - ${latency} ${method} ${path}\n",
