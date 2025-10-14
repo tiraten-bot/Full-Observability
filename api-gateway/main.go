@@ -15,6 +15,7 @@ import (
 	fiberlogger "github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/tair/full-observability/api-gateway/config"
 	"github.com/tair/full-observability/api-gateway/middleware"
@@ -51,6 +52,29 @@ func main() {
 		}()
 	}
 
+	// Initialize Redis for rate limiting
+	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
+	redisPassword := getEnv("REDIS_PASSWORD", "")
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: redisPassword,
+		DB:       0,
+	})
+
+	// Test Redis connection
+	ctx := context.Background()
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		logger.Logger.Warn().
+			Err(err).
+			Str("redis_addr", redisAddr).
+			Msg("Failed to connect to Redis - rate limiting will be disabled")
+		redisClient = nil
+	} else {
+		logger.Logger.Info().
+			Str("redis_addr", redisAddr).
+			Msg("Connected to Redis for rate limiting")
+	}
+
 	// Load configuration
 	cfg := config.LoadConfig()
 
@@ -65,7 +89,7 @@ func main() {
 	})
 
 	// Global middleware
-	setupMiddleware(app)
+	setupMiddleware(app, redisClient)
 
 	// Setup routes
 	routes.SetupRoutes(app, cfg)
@@ -99,7 +123,7 @@ func main() {
 }
 
 // setupMiddleware configures global middleware
-func setupMiddleware(app *fiber.App) {
+func setupMiddleware(app *fiber.App, redisClient *redis.Client) {
 	// Recover from panics
 	app.Use(recover.New(recover.Config{
 		EnableStackTrace: true,
@@ -121,6 +145,14 @@ func setupMiddleware(app *fiber.App) {
 		TimeZone:   "Local",
 	}))
 
+	// Rate Limiting (if Redis available)
+	if redisClient != nil {
+		logger.Logger.Info().Msg("Rate limiting enabled (100 req/min)")
+		app.Use(middleware.GlobalRateLimiter(redisClient))
+	} else {
+		logger.Logger.Warn().Msg("Rate limiting disabled (Redis not available)")
+	}
+
 	// CORS - Frontend için (development ve production için)
 	allowOrigins := getEnv("CORS_ALLOWED_ORIGINS", "*")
 	app.Use(cors.New(cors.Config{
@@ -128,7 +160,7 @@ func setupMiddleware(app *fiber.App) {
 		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS,HEAD",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Request-Id, X-User-Id, traceparent, tracestate",
 		AllowCredentials: true,
-		ExposeHeaders:    "X-Request-Id, X-Trace-Id, X-User-Id",
+		ExposeHeaders:    "X-Request-Id, X-Trace-Id, X-User-Id, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset",
 		MaxAge:           86400, // 24 hours
 	}))
 
