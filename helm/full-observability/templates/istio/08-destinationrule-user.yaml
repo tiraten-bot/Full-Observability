@@ -1,0 +1,306 @@
+# ==============================================================================
+# DESTINATIONRULE - USER SERVICE
+# ==============================================================================
+# Purpose: Define traffic policies for User Service
+#
+# WHAT IS DESTINATIONRULE?
+#   After VirtualService decides WHERE to send traffic,
+#   DestinationRule defines HOW to send that traffic:
+#     - Load balancing algorithm
+#     - Connection pool settings
+#     - Circuit breaker configuration
+#     - TLS settings (mTLS)
+#     - Subsets (versions: v1, v2, canary)
+#
+# FLOW: VirtualService → DestinationRule → Kubernetes Service → Pods
+#
+# KEY CONCEPTS:
+#   - trafficPolicy: How to handle traffic (global or per-subset)
+#   - loadBalancer: Which algorithm to use
+#   - connectionPool: Connection limits
+#   - outlierDetection: Circuit breaker configuration
+#   - tls: mTLS settings
+#   - subsets: Version labels for canary/blue-green deployments
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: user-service-dr
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: user-service
+    component: traffic-policy
+  annotations:
+    description: "Traffic policy for User Service - handles authentication traffic"
+spec:
+  # ============================================================================
+  # HOST: Which service does this rule apply to?
+  # ============================================================================
+  host: user-service
+  
+  # ============================================================================
+  # TRAFFIC POLICY (Global - applies to all subsets)
+  # ============================================================================
+  trafficPolicy:
+    # ==========================================================================
+    # LOAD BALANCER: How to distribute traffic across pods
+    # ==========================================================================
+    loadBalancer:
+      # Algorithm options:
+      #   - ROUND_ROBIN: Distribute evenly (default)
+      #   - LEAST_REQUEST: Send to pod with fewest active requests
+      #   - RANDOM: Random selection
+      #   - PASSTHROUGH: Don't load balance (use kube-proxy)
+      #   - CONSISTENT_HASH: Sticky sessions based on headers/cookies
+      
+      simple: LEAST_REQUEST       # Best for varied request durations
+      
+      # Consistent Hash (alternative - for sticky sessions)
+      # consistentHash:
+      #   httpHeaderName: "x-user-id"        # Hash by user ID
+      #   OR
+      #   httpCookie:
+      #     name: "session-id"
+      #     ttl: 3600s
+      #   OR
+      #   useSourceIp: true                  # Hash by client IP
+    
+    # ==========================================================================
+    # CONNECTION POOL: Limit concurrent connections
+    # ==========================================================================
+    connectionPool:
+      # TCP Connection Pool
+      tcp:
+        maxConnections: 100                   # Max connections to service
+        connectTimeout: 30s                   # Connection timeout
+        tcpKeepalive:
+          time: 7200s                         # 2 hours
+          interval: 75s
+          probes: 9
+      
+      # HTTP Connection Pool
+      http:
+        http1MaxPendingRequests: 50           # Queue size for HTTP/1.1
+        http2MaxRequests: 100                 # Max concurrent HTTP/2 streams
+        maxRequestsPerConnection: 2           # Max requests per connection
+        maxRetries: 3                         # Connection-level retries
+        idleTimeout: 3600s                    # 1 hour idle timeout
+        h2UpgradePolicy: UPGRADE              # Allow HTTP/1.1 → HTTP/2 upgrade
+    
+    # ==========================================================================
+    # OUTLIER DETECTION: Circuit Breaker Configuration
+    # ==========================================================================
+    # Purpose: Detect and eject unhealthy pods from load balancing pool
+    # 
+    # How it works:
+    #   1. Monitor each pod's error rate
+    #   2. If pod has N consecutive errors → EJECT from pool
+    #   3. Wait for base ejection time
+    #   4. Try again (allow 1 request)
+    #   5. If still failing → eject for longer (exponential backoff)
+    #   6. If successful → add back to pool
+    outlierDetection:
+      consecutiveGatewayErrors: 5             # Eject after 5 errors
+      consecutive5xxErrors: 5                 # OR 5 server errors
+      interval: 30s                           # Check every 30s
+      baseEjectionTime: 30s                   # Eject for min 30s
+      maxEjectionPercent: 50                  # Max 50% of pods can be ejected
+      minHealthPercent: 10                    # Keep at least 10% healthy
+      
+      # Split external vs local origin failures
+      splitExternalLocalOriginErrors: true
+      consecutiveLocalOriginFailures: 5
+    
+    # ==========================================================================
+    # TLS: Configure TLS/mTLS for connections
+    # ==========================================================================
+    tls:
+      # Mode options:
+      #   - DISABLE: No TLS
+      #   - SIMPLE: Client-side TLS (verify server)
+      #   - MUTUAL: mTLS (both verify each other)
+      #   - ISTIO_MUTUAL: Istio managed mTLS (recommended)
+      mode: ISTIO_MUTUAL                      # Use Istio's automatic mTLS
+      
+      # For ISTIO_MUTUAL, certificates are auto-managed by Istio
+      # For MUTUAL/SIMPLE, specify:
+      # clientCertificate: /etc/certs/cert.pem
+      # privateKey: /etc/certs/key.pem
+      # caCertificates: /etc/certs/ca.pem
+  
+  # ============================================================================
+  # SUBSETS: Define service versions/variants
+  # ============================================================================
+  # Purpose: Label-based routing for canary/blue-green deployments
+  # 
+  # Example deployment labels:
+  #   Pod v1: version=v1
+  #   Pod v2: version=v2
+  #   Pod canary: version=canary
+  #
+  # VirtualService can route traffic by subset:
+  #   90% → subset: v1
+  #   10% → subset: canary
+  subsets:
+    # ==========================================================================
+    # SUBSET: v1 (Stable/Production version)
+    # ==========================================================================
+    - name: v1
+      labels:
+        version: v1                           # Matches pod label
+      # Subset-specific traffic policy (overrides global)
+      # trafficPolicy:
+      #   loadBalancer:
+      #     simple: ROUND_ROBIN
+    
+    # ==========================================================================
+    # SUBSET: v2 (New version)
+    # ==========================================================================
+    - name: v2
+      labels:
+        version: v2
+      # More conservative settings for new version
+      trafficPolicy:
+        connectionPool:
+          tcp:
+            maxConnections: 50                # Lower limit for v2
+          http:
+            http1MaxPendingRequests: 25
+        outlierDetection:
+          consecutiveErrors: 3                # Faster circuit breaking
+          interval: 10s
+          baseEjectionTime: 60s               # Longer ejection
+    
+    # ==========================================================================
+    # SUBSET: canary (Canary deployment - experimental)
+    # ==========================================================================
+    - name: canary
+      labels:
+        version: canary
+      # Most conservative settings for canary
+      trafficPolicy:
+        connectionPool:
+          tcp:
+            maxConnections: 20
+          http:
+            http1MaxPendingRequests: 10
+        outlierDetection:
+          consecutiveErrors: 2
+          interval: 5s
+          baseEjectionTime: 120s
+
+---
+# ==============================================================================
+# DESTINATIONRULE KEY CONCEPTS EXPLAINED
+# ==============================================================================
+#
+# 1. LOAD BALANCER ALGORITHMS:
+#
+#    ROUND_ROBIN:
+#      Request 1 → Pod A
+#      Request 2 → Pod B
+#      Request 3 → Pod C
+#      Request 4 → Pod A (cycle repeats)
+#      Use: Even distribution, simple workloads
+#
+#    LEAST_REQUEST:
+#      Pod A: 10 active requests
+#      Pod B: 5 active requests  ← SEND HERE
+#      Pod C: 15 active requests
+#      Use: Requests with varying duration, best performance
+#
+#    RANDOM:
+#      Randomly pick a pod
+#      Use: Simple, no state needed
+#
+#    CONSISTENT_HASH:
+#      Same user always goes to same pod
+#      Hash("user-123") → Pod B (always Pod B for user-123)
+#      Use: Session affinity, caching
+#
+# 2. CONNECTION POOL:
+#
+#    maxConnections: 100
+#      Total TCP connections to this service
+#      If exceeded → queue or reject
+#
+#    http1MaxPendingRequests: 50
+#      Queue size for HTTP/1.1 requests waiting for connection
+#
+#    http2MaxRequests: 100
+#      Concurrent HTTP/2 streams
+#
+#    maxRequestsPerConnection: 2
+#      Reuse connection for max 2 requests, then create new
+#      Use: Prevent connection starvation
+#
+# 3. OUTLIER DETECTION (Circuit Breaker):
+#
+#    consecutiveErrors: 5
+#      After 5 consecutive errors → EJECT pod
+#
+#    interval: 30s
+#      Check pod health every 30s
+#
+#    baseEjectionTime: 30s
+#      Eject pod for minimum 30s
+#      Then allow 1 request to test
+#      If still failing → eject for 60s (2x)
+#      If still failing → eject for 120s (4x)
+#      Max ejection time = baseEjectionTime * maxEjectionPercent
+#
+#    maxEjectionPercent: 50
+#      Max 50% of pods can be ejected
+#      Prevents total service unavailability
+#
+#    Example Flow:
+#      Pod A: ✅✅✅✅✅ (healthy)
+#      Pod B: ❌❌❌❌❌ (5 errors) → EJECTED for 30s
+#      Traffic → only Pod A
+#      After 30s → try Pod B with 1 request
+#      If ✅ → Pod B back in pool
+#      If ❌ → EJECTED for 60s
+#
+# 4. TLS MODES:
+#
+#    DISABLE: No encryption (not recommended)
+#    SIMPLE: Client verifies server certificate
+#    MUTUAL: Both verify each other
+#    ISTIO_MUTUAL: Istio auto-manages mTLS (RECOMMENDED)
+#
+# 5. SUBSETS:
+#
+#    Subsets allow version-based routing
+#    
+#    Example Deployment:
+#      apiVersion: apps/v1
+#      kind: Deployment
+#      metadata:
+#        name: user-service-v1
+#      spec:
+#        template:
+#          metadata:
+#            labels:
+#              app: user-service
+#              version: v1        ← SUBSET LABEL
+#
+#    DestinationRule:
+#      subsets:
+#        - name: v1
+#          labels:
+#            version: v1
+#
+#    VirtualService (use subset):
+#      route:
+#        - destination:
+#            host: user-service
+#            subset: v1           ← REFERENCE TO SUBSET
+#          weight: 90
+#        - destination:
+#            host: user-service
+#            subset: v2
+#          weight: 10             ← CANARY DEPLOYMENT
+#
+# ==============================================================================
+
