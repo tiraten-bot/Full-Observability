@@ -1,0 +1,68 @@
+# ==============================================================================
+# DESTINATIONRULE - PRODUCT SERVICE
+# ==============================================================================
+# Purpose: Traffic policy for Product Service
+# Characteristics: Read-heavy service, needs aggressive caching
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: product-service-dr
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: product-service
+    component: traffic-policy
+spec:
+  host: product-service
+  
+  trafficPolicy:
+    # Product listing is read-heavy, use LEAST_REQUEST for best performance
+    loadBalancer:
+      simple: LEAST_REQUEST
+      # Locality-based load balancing (prefer same zone/region)
+      localityLbSetting:
+        enabled: true
+        distribute:
+          - from: "us-east-1a"
+            to:
+              "us-east-1a": 80
+              "us-east-1b": 20
+    
+    connectionPool:
+      tcp:
+        maxConnections: 200         # Higher for read-heavy service
+        connectTimeout: 30s
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 200
+        maxRequestsPerConnection: 3
+        maxRetries: 3
+    
+    # Aggressive circuit breaker for product service
+    outlierDetection:
+      consecutiveGatewayErrors: 3   # Faster detection
+      consecutive5xxErrors: 3
+      interval: 10s                 # Check more frequently
+      baseEjectionTime: 60s         # Longer ejection
+      maxEjectionPercent: 50
+    
+    tls:
+      mode: ISTIO_MUTUAL
+  
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    
+    - name: v2
+      labels:
+        version: v2
+      # New version gets more conservative settings
+      trafficPolicy:
+        connectionPool:
+          tcp:
+            maxConnections: 100
+          http:
+            http1MaxPendingRequests: 50
+
