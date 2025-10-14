@@ -1,0 +1,282 @@
+# ==============================================================================
+# ISTIO GATEWAY - MAIN ENTRY POINT
+# ==============================================================================
+# Purpose: Define how external traffic enters the service mesh
+#
+# ANALOGY: Gateway = Building entrance door
+#   - Defines which ports are open (80, 443)
+#   - Defines which protocols are accepted (HTTP, HTTPS, TCP)
+#   - Defines which hosts/domains are allowed (*.example.com)
+#
+# GATEWAY vs KUBERNETES INGRESS:
+#   - Gateway: Layer 4-6 configuration (ports, protocols, TLS)
+#   - VirtualService: Layer 7 configuration (HTTP routing, headers)
+#   - Kubernetes Ingress: Both combined in one resource
+#
+# FLOW: Internet → Gateway → VirtualService → Service → Pod
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: main-gateway
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: istio-gateway
+    component: gateway
+  annotations:
+    description: "Main gateway for all external traffic"
+spec:
+  # ============================================================================
+  # SELECTOR: Which Istio Ingress Gateway pod will handle this Gateway
+  # ============================================================================
+  # This selector matches the Istio Ingress Gateway deployment
+  # Default: istio=ingressgateway (installed by Istio)
+  selector:
+    istio: ingressgateway
+  
+  # ============================================================================
+  # SERVERS: List of ports and protocols to expose
+  # ============================================================================
+  servers:
+    # ==========================================================================
+    # HTTP Server (Port 80)
+    # ==========================================================================
+    - port:
+        number: 80              # External port (Internet → Gateway)
+        name: http              # Name for reference
+        protocol: HTTP          # Protocol: HTTP, HTTPS, TCP, TLS, gRPC
+      
+      # Hosts that this server accepts
+      # "*" = accept all hosts
+      # "api.example.com" = only this host
+      # "*.example.com" = wildcard
+      hosts:
+        - "*"                   # Accept all hosts
+      
+      # TLS redirect (optional)
+      # Automatically redirect HTTP to HTTPS
+      # tls:
+      #   httpsRedirect: true
+    
+    # ==========================================================================
+    # HTTPS Server (Port 443)
+    # ==========================================================================
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      
+      hosts:
+        - "api.example.com"           # API Gateway
+        - "grafana.example.com"       # Grafana UI
+        - "jaeger.example.com"        # Jaeger UI
+        - "kiali.example.com"         # Kiali (optional)
+      
+      # TLS Configuration
+      tls:
+        # TLS Mode:
+        #   - SIMPLE: Standard TLS (server-side only)
+        #   - MUTUAL: mTLS (client certificate required)
+        #   - PASSTHROUGH: TLS passthrough (no termination)
+        #   - ISTIO_MUTUAL: Istio managed mTLS
+        mode: SIMPLE
+        
+        # Certificate source:
+        #   Option 1: Kubernetes Secret (recommended)
+        credentialName: api-tls-secret
+        
+        # Option 2: File-based (less common)
+        # serverCertificate: /etc/certs/server.pem
+        # privateKey: /etc/certs/key.pem
+        # caCertificates: /etc/certs/ca.pem
+        
+        # TLS versions
+        minProtocolVersion: TLSV1_2
+        maxProtocolVersion: TLSV1_3
+        
+        # Cipher suites (optional - use defaults)
+        # cipherSuites:
+        #   - ECDHE-ECDSA-AES128-GCM-SHA256
+        #   - ECDHE-RSA-AES128-GCM-SHA256
+
+---
+# ==============================================================================
+# GRAFANA GATEWAY - Separate gateway for monitoring tools
+# ==============================================================================
+# Purpose: Dedicated gateway for observability tools
+# Why separate? Different security requirements and access patterns
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: monitoring-gateway
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: monitoring-gateway
+    component: observability
+spec:
+  selector:
+    istio: ingressgateway
+  
+  servers:
+    # HTTP (with redirect to HTTPS)
+    - port:
+        number: 80
+        name: http-monitoring
+        protocol: HTTP
+      hosts:
+        - "grafana.example.com"
+        - "jaeger.example.com"
+        - "kiali.example.com"
+        - "prometheus.example.com"
+      tls:
+        httpsRedirect: true
+    
+    # HTTPS
+    - port:
+        number: 443
+        name: https-monitoring
+        protocol: HTTPS
+      hosts:
+        - "grafana.example.com"
+        - "jaeger.example.com"
+        - "kiali.example.com"
+        - "prometheus.example.com"
+      tls:
+        mode: SIMPLE
+        credentialName: monitoring-tls-secret
+
+---
+# ==============================================================================
+# TCP GATEWAY - For non-HTTP protocols (optional)
+# ==============================================================================
+# Purpose: Handle TCP/gRPC traffic that doesn't use HTTP
+# Example: External gRPC clients, database connections, etc.
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: grpc-gateway
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: grpc-gateway
+    component: grpc
+spec:
+  selector:
+    istio: ingressgateway
+  
+  servers:
+    # gRPC on port 9090 (User Service)
+    - port:
+        number: 9090
+        name: grpc-user-service
+        protocol: GRPC
+      hosts:
+        - "*"
+    
+    # gRPC on port 9091 (Product Service)
+    - port:
+        number: 9091
+        name: grpc-product-service
+        protocol: GRPC
+      hosts:
+        - "*"
+
+---
+# ==============================================================================
+# TLS CERTIFICATES - Kubernetes Secrets
+# ==============================================================================
+# Purpose: Store TLS certificates for HTTPS
+#
+# IMPORTANT: These are placeholder secrets
+# In production, use:
+#   - cert-manager for automatic certificate management
+#   - Let's Encrypt for free SSL certificates
+#   - Or your own CA/commercial certificates
+#
+# Create certificate:
+#   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#     -keyout tls.key -out tls.crt -subj "/CN=api.example.com"
+#
+# Create secret:
+#   kubectl create secret tls api-tls-secret \
+#     --cert=tls.crt --key=tls.key -n istio-system
+# ==============================================================================
+
+# NOTE: TLS secrets should be in istio-system namespace
+# They will be referenced by credentialName in Gateway
+
+---
+# ==============================================================================
+# GATEWAY EXPLANATION - KEY CONCEPTS
+# ==============================================================================
+#
+# 1. SELECTOR:
+#    Matches the Istio Ingress Gateway pod
+#    Default label: istio=ingressgateway
+#
+# 2. SERVERS:
+#    List of ports/protocols to expose
+#    Each server = one port configuration
+#
+# 3. PORT:
+#    - number: External port (what users connect to)
+#    - name: Identifier for this port
+#    - protocol: HTTP, HTTPS, TCP, TLS, gRPC, HTTP2, MONGO, MYSQL, REDIS
+#
+# 4. HOSTS:
+#    Which domain names this server accepts
+#    - "*" = all hosts
+#    - "example.com" = exact match
+#    - "*.example.com" = wildcard subdomain
+#    - Multiple hosts = array
+#
+# 5. TLS:
+#    - mode: SIMPLE (server TLS), MUTUAL (client cert required), PASSTHROUGH
+#    - credentialName: Kubernetes secret name (in istio-system namespace)
+#    - httpsRedirect: Auto redirect HTTP → HTTPS
+#
+# 6. MULTIPLE GATEWAYS:
+#    You can have multiple gateways for:
+#    - Different protocols (HTTP vs gRPC)
+#    - Different security requirements (public vs private)
+#    - Different ingress controllers (multiple LoadBalancers)
+#
+# ==============================================================================
+
+---
+# ==============================================================================
+# EXAMPLE USAGE PATTERNS
+# ==============================================================================
+#
+# PATTERN 1: Single Gateway for All Traffic
+#   gateway:
+#     servers:
+#       - port: 80, hosts: ["*"]
+#       - port: 443, hosts: ["*"]
+#
+# PATTERN 2: Multiple Gateways by Function
+#   api-gateway: Public API traffic
+#   admin-gateway: Admin tools (with client certificate)
+#   monitoring-gateway: Observability tools
+#
+# PATTERN 3: Multiple Gateways by Environment
+#   gateway-dev: Development environment
+#   gateway-staging: Staging environment
+#   gateway-prod: Production environment
+#
+# PATTERN 4: Protocol-Specific Gateways
+#   http-gateway: HTTP/HTTPS traffic
+#   grpc-gateway: gRPC traffic
+#   tcp-gateway: Raw TCP traffic
+#
+# ==============================================================================
+
+# OUR CHOICE: PATTERN 2 (Multiple Gateways by Function)
+#   - main-gateway: API traffic
+#   - monitoring-gateway: Grafana, Jaeger, Prometheus
+#   - grpc-gateway: gRPC services (optional)
+
