@@ -2,6 +2,144 @@
 
 A production-ready microservices architecture built with Go, featuring comprehensive observability, service mesh, and event-driven patterns.
 
+## AWS Cloud Infrastructure
+
+```mermaid
+graph TB
+    subgraph "AWS Cloud - Region: us-east-1"
+        subgraph "VPC: 10.0.0.0/16"
+            subgraph "Availability Zone A"
+                PUB1[Public Subnet<br/>10.0.48.0/20<br/>NAT Gateway + ALB]
+                PRIV1[Private Subnet<br/>10.0.0.0/20<br/>EKS Nodes]
+                DB1[Database Subnet<br/>10.0.96.0/20<br/>RDS + ElastiCache]
+            end
+            
+            subgraph "Availability Zone B"
+                PUB2[Public Subnet<br/>10.0.64.0/20]
+                PRIV2[Private Subnet<br/>10.0.16.0/20]
+                DB2[Database Subnet<br/>10.0.112.0/20]
+            end
+            
+            subgraph "Availability Zone C"
+                PUB3[Public Subnet<br/>10.0.80.0/20]
+                PRIV3[Private Subnet<br/>10.0.32.0/20]
+                DB3[Database Subnet<br/>10.0.128.0/20]
+            end
+            
+            IGW[Internet Gateway]
+            ALB[Application Load Balancer<br/>HTTPS Termination]
+            
+            subgraph "EKS Cluster"
+                CP[EKS Control Plane<br/>Managed by AWS]
+                NG1[Node Group: general<br/>t3.medium x 3-10<br/>Microservices]
+                NG2[Node Group: observability<br/>t3.large x 2-5<br/>Prometheus, Grafana]
+            end
+            
+            subgraph "Managed Services"
+                RDS[(RDS PostgreSQL 15<br/>Multi-AZ<br/>db.r6g.xlarge)]
+                REDIS[(ElastiCache Redis 7<br/>Cluster Mode<br/>cache.r6g.large)]
+                MSK[MSK Kafka 3.5<br/>3 Brokers<br/>kafka.m5.large]
+            end
+        end
+        
+        subgraph "AWS Services"
+            R53[Route53<br/>DNS Management]
+            ACM[ACM<br/>SSL Certificates]
+            ECR[ECR<br/>Container Registry]
+            CW[CloudWatch<br/>Logs + Metrics]
+            SNS[SNS<br/>Alerts]
+            KMS[KMS<br/>Encryption Keys]
+            S3[S3<br/>Logs + Backups]
+        end
+    end
+    
+    Internet([Internet]) --> R53
+    R53 --> ALB
+    IGW --> ALB
+    ALB --> PUB1
+    ALB --> PUB2
+    ALB --> PUB3
+    
+    PUB1 --> PRIV1
+    PUB2 --> PRIV2
+    PUB3 --> PRIV3
+    
+    PRIV1 --> NG1
+    PRIV2 --> NG1
+    PRIV3 --> NG1
+    
+    PRIV1 --> NG2
+    PRIV2 --> NG2
+    
+    NG1 --> DB1
+    NG1 --> DB2
+    NG1 --> DB3
+    
+    DB1 --> RDS
+    DB2 --> RDS
+    DB3 --> RDS
+    
+    DB1 --> REDIS
+    DB2 --> REDIS
+    
+    PRIV1 --> MSK
+    PRIV2 --> MSK
+    PRIV3 --> MSK
+    
+    NG1 -.->|Pull Images| ECR
+    NG1 -.->|Logs| CW
+    NG2 -.->|Logs| CW
+    
+    CW -.->|Alerts| SNS
+    RDS -.->|Encrypted| KMS
+    MSK -.->|Encrypted| KMS
+    MSK -.->|Logs| S3
+    
+    style RDS fill:#ff9999
+    style REDIS fill:#99ff99
+    style MSK fill:#9999ff
+    style NG1 fill:#ffcc99
+    style NG2 fill:#cc99ff
+```
+
+## Terraform Infrastructure as Code
+
+```mermaid
+graph LR
+    subgraph "Terraform Modules"
+        VPC[VPC Module<br/>Network Infrastructure]
+        EKS[EKS Module<br/>Kubernetes Cluster]
+        RDS[RDS Module<br/>PostgreSQL Database]
+        REDIS[ElastiCache Module<br/>Redis Cache]
+        KAFKA[MSK Module<br/>Kafka Cluster]
+        SG[Security Groups<br/>Firewall Rules]
+        IAM[IAM Module<br/>Roles & Policies]
+        ALB_M[ALB Module<br/>Load Balancer]
+        R53[Route53 Module<br/>DNS]
+        ACM_M[ACM Module<br/>SSL Certificates]
+    end
+    
+    VPC --> EKS
+    VPC --> RDS
+    VPC --> REDIS
+    VPC --> KAFKA
+    VPC --> SG
+    
+    EKS --> IAM
+    SG --> EKS
+    SG --> RDS
+    SG --> REDIS
+    SG --> KAFKA
+    
+    ALB_M --> VPC
+    R53 --> ALB_M
+    ACM_M --> ALB_M
+    
+    style VPC fill:#e1f0ff
+    style EKS fill:#ffe1e1
+    style RDS fill:#e1ffe1
+```
+
 ## Architecture Overview
 
 ```mermaid
@@ -1071,6 +1209,28 @@ sequenceDiagram
 
 ## Deployment Commands
 
+### Terraform - AWS Infrastructure
+```bash
+# Initialize Terraform
+cd terraform
+terraform init
+
+# Plan infrastructure (development)
+./terraform-apply.sh dev
+
+# Plan infrastructure (production)  
+./terraform-apply.sh prod
+
+# Destroy infrastructure
+./terraform-destroy.sh dev
+
+# View current state
+terraform show
+
+# View outputs
+terraform output
+```
+
 ### Docker Compose
 ```bash
 # Build all services
@@ -1135,6 +1295,7 @@ graph TB
         API[api/<br/>Protocol Buffers]
         HELM[helm/<br/>Kubernetes Deployment]
         DOCKER[dockerfiles/<br/>Container Images]
+        TF[terraform/<br/>Infrastructure as Code]
     end
     
     subgraph "cmd/"
@@ -1165,6 +1326,12 @@ graph TB
         SCRIPTS[*.sh<br/>Deployment Scripts]
     end
     
+    subgraph "terraform/"
+        TFMAIN[main.tf, variables.tf]
+        TFMOD[modules/<br/>vpc, eks, rds, etc.]
+        TFENV[environments/<br/>dev, staging, prod]
+    end
+    
     CMD --> U
     CMD --> P
     CMD --> I
@@ -1183,6 +1350,10 @@ graph TB
     HELM --> CHART
     HELM --> ISTIO
     HELM --> SCRIPTS
+    
+    TF --> TFMAIN
+    TF --> TFMOD
+    TF --> TFENV
 ```
 
 ## Service Ports
