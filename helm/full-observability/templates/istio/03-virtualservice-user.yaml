@@ -1,0 +1,327 @@
+# ==============================================================================
+# VIRTUALSERVICE - USER SERVICE
+# ==============================================================================
+# Purpose: Define routing rules for User Service traffic
+#
+# SCENARIO: How traffic flows to User Service
+#
+#   External:  api.example.com/users → Gateway → THIS VS → user-service
+#   Internal:  payment-service → user-service (gRPC) → THIS VS → user-service
+#
+# TWO TYPES OF TRAFFIC:
+#   1. HTTP (from API Gateway): Port 8080
+#   2. gRPC (from other services): Port 9090
+#
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: user-service-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: user-service
+    component: routing
+  annotations:
+    description: "Routing rules for User Service - handles authentication and user management"
+spec:
+  # ============================================================================
+  # HOSTS: Which services does this VirtualService apply to?
+  # ============================================================================
+  hosts:
+    - user-service                                              # Short name
+    - user-service.observability.svc.cluster.local             # FQDN
+  
+  # ============================================================================
+  # GATEWAYS: Where traffic comes from
+  # ============================================================================
+  gateways:
+    - mesh                        # Internal traffic (service-to-service)
+    # Not attached to external gateway because:
+    #   - User Service is accessed via API Gateway (not directly from internet)
+    #   - API Gateway → User Service (internal call)
+  
+  # ============================================================================
+  # HTTP ROUTING RULES
+  # ============================================================================
+  http:
+    # ==========================================================================
+    # ROUTE 1: Authentication Endpoints (High Priority)
+    # ==========================================================================
+    - name: "auth-endpoints"
+      match:
+        - uri:
+            prefix: /auth/         # /auth/login, /auth/register
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 8080
+      # Auth endpoints should be fast
+      timeout: 10s
+      retries:
+        attempts: 2
+        perTryTimeout: 5s
+        retryOn: 5xx,reset,connect-failure
+    
+    # ==========================================================================
+    # ROUTE 2: Admin Endpoints (Protected)
+    # ==========================================================================
+    - name: "admin-endpoints"
+      match:
+        - uri:
+            prefix: /admin/
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 8080
+      # Admin operations can take longer
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: 5xx,reset
+      # Add admin identifier header
+      headers:
+        request:
+          add:
+            x-request-type: "admin"
+    
+    # ==========================================================================
+    # ROUTE 3: User Profile Endpoints
+    # ==========================================================================
+    - name: "user-endpoints"
+      match:
+        - uri:
+            prefix: /users/
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 8080
+      timeout: 15s
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: 5xx
+    
+    # ==========================================================================
+    # ROUTE 4: Health Check
+    # ==========================================================================
+    - name: "health-check"
+      match:
+        - uri:
+            exact: /health
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 8080
+      timeout: 5s
+      retries:
+        attempts: 0           # No retries for health checks
+    
+    # ==========================================================================
+    # ROUTE 5: Default Route (Catch-All)
+    # ==========================================================================
+    - name: "default"
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 8080
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: 5xx,reset,connect-failure
+
+---
+# ==============================================================================
+# VIRTUALSERVICE - USER SERVICE gRPC
+# ==============================================================================
+# Purpose: Handle gRPC traffic to User Service
+# Used by: Product Service, Payment Service (for user validation)
+#
+# gRPC vs HTTP VirtualService:
+#   - Different protocol
+#   - Different routing rules
+#   - Usually service-to-service only
+# ==============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: user-service-grpc-vs
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: user-service
+    component: grpc-routing
+  annotations:
+    description: "gRPC routing for User Service - internal service-to-service calls"
+spec:
+  hosts:
+    - user-service
+    - user-service.observability.svc.cluster.local
+  
+  gateways:
+    - mesh                        # Only internal traffic
+    # - grpc-gateway              # Uncomment if exposing gRPC externally
+  
+  # ============================================================================
+  # HTTP RULES (gRPC uses HTTP/2)
+  # ============================================================================
+  # Note: gRPC is over HTTP/2, so we use 'http' section
+  http:
+    # ==========================================================================
+    # ROUTE 1: GetUser gRPC method
+    # ==========================================================================
+    - name: "grpc-get-user"
+      match:
+        - headers:
+            ":method":
+              exact: POST         # gRPC uses POST
+            "content-type":
+              prefix: "application/grpc"
+          uri:
+            prefix: /user.UserService/GetUser
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 9090        # gRPC port
+      timeout: 10s
+      retries:
+        attempts: 3
+        perTryTimeout: 3s
+        retryOn: cancelled,deadline-exceeded,unavailable
+    
+    # ==========================================================================
+    # ROUTE 2: All other gRPC methods
+    # ==========================================================================
+    - name: "grpc-default"
+      match:
+        - headers:
+            "content-type":
+              prefix: "application/grpc"
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 9090
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: cancelled,deadline-exceeded,resource-exhausted,unavailable
+
+---
+# ==============================================================================
+# VIRTUALSERVICE CONCEPTS EXPLAINED
+# ==============================================================================
+#
+# 1. MATCH CONDITIONS (Order matters - top to bottom):
+#    
+#    uri:
+#      exact: "/users/123"           # Exact path
+#      prefix: "/users/"             # Starts with
+#      regex: "^/users/[0-9]+$"      # Regex pattern
+#    
+#    headers:
+#      cookie:
+#        regex: "^(.*?;)?(user=dev)(;.*)?$"
+#      x-api-version:
+#        exact: "v2"
+#    
+#    queryParams:
+#      version:
+#        exact: "v2"
+#    
+#    method:
+#      exact: GET
+#    
+#    sourceLabels:
+#      app: mobile-app
+#
+# 2. ROUTE DESTINATION:
+#    
+#    destination:
+#      host: user-service          # REQUIRED: Kubernetes service name
+#      subset: v1                  # OPTIONAL: Version (from DestinationRule)
+#      port:
+#        number: 8080              # Service port
+#
+# 3. WEIGHT (Traffic Splitting):
+#    
+#    route:
+#      - destination:
+#          host: user-service
+#          subset: v1
+#        weight: 90                # 90% traffic to v1
+#      - destination:
+#          host: user-service
+#          subset: v2
+#        weight: 10                # 10% traffic to v2 (canary)
+#
+# 4. RETRIES:
+#    
+#    retries:
+#      attempts: 3                 # Max retry count
+#      perTryTimeout: 2s           # Timeout per attempt
+#      retryOn: 5xx,reset          # When to retry
+#
+#    Common retryOn values:
+#      - 5xx: All 5xx errors
+#      - gateway-error: 502, 503, 504
+#      - reset: Connection reset
+#      - connect-failure: Connection failed
+#      - refused-stream: gRPC refused
+#      - cancelled: gRPC cancelled
+#      - deadline-exceeded: Timeout
+#      - resource-exhausted: Too many requests
+#      - unavailable: Service unavailable
+#
+# 5. TIMEOUT:
+#    Total time for request (including retries)
+#    Example: timeout=30s, retries=3, perTryTimeout=10s
+#      - Max time: 30s (timeout)
+#      - Each try: 10s (perTryTimeout)
+#      - Total tries: 3 (attempts)
+#      If 3 tries finish before 30s → OK
+#      If 30s passes → Request fails
+#
+# 6. HEADERS:
+#    
+#    headers:
+#      request:
+#        add:                      # Add to client request
+#          x-custom: "value"
+#        set:                      # Override if exists
+#          x-custom: "value"
+#        remove:                   # Remove from request
+#          - x-legacy
+#      response:
+#        add/set/remove:           # Same for responses
+#
+# 7. REWRITE (URL Rewriting):
+#    
+#    rewrite:
+#      uri: "/v2/users"            # Rewrite /users → /v2/users
+#      authority: "new-host.com"   # Change Host header
+#
+# 8. REDIRECT:
+#    
+#    redirect:
+#      uri: "/new-path"
+#      authority: "new-host.com"
+#      redirectCode: 301           # HTTP redirect code
+#
+# 9. DELEGATE (to another VirtualService):
+#    
+#    delegate:
+#      name: user-service-internal-vs
+#      namespace: observability
+#
+# ==============================================================================
+
