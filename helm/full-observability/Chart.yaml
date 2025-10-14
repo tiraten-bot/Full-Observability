@@ -1,0 +1,25 @@
+apiVersion: v2
+name: full-observability
+description: A Helm chart for Full Observability Microservices with complete monitoring stack
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - microservices
+  - observability
+  - prometheus
+  - grafana
+  - jaeger
+  - golang
+  - postgresql
+  - kafka
+  - redis
+home: https://github.com/ozturkeniss/Full-Observability
+sources:
+  - https://github.com/ozturkeniss/Full-Observability
+maintainers:
+  - name: DevOps Team
+    email: support@example.com
+icon: https://raw.githubusercontent.com/cncf/artwork/master/projects/prometheus/icon/color/prometheus-icon-color.png
+dependencies: []
+

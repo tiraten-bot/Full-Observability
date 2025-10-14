@@ -1,0 +1,33 @@
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.global.namespace }}
+  labels:
+    {{- toYaml .Values.namespace.labels | nindent 4 }}
+---
+{{- if .Values.namespace.resourceQuota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ .Values.global.namespace }}-quota
+  namespace: {{ .Values.global.namespace }}
+spec:
+  hard:
+    {{- toYaml .Values.namespace.resourceQuota.hard | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.namespace.limitRange.enabled }}
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ .Values.global.namespace }}-limitrange
+  namespace: {{ .Values.global.namespace }}
+spec:
+  limits:
+    - type: Container
+      {{- toYaml .Values.namespace.limitRange.container | nindent 6 }}
+---
+{{- end }}
+{{- end }}
+

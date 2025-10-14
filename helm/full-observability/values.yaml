@@ -1,0 +1,460 @@
+# ==============================================================================
+# FULL OBSERVABILITY MICROSERVICES - HELM VALUES
+# ==============================================================================
+# Global configuration that applies to all components
+# ==============================================================================
+
+global:
+  namespace: observability
+  imageRegistry: docker.io
+  imagePullPolicy: IfNotPresent
+  storageClass: ""  # Use default storage class
+  environment: production
+
+# ==============================================================================
+# NAMESPACE
+# ==============================================================================
+namespace:
+  create: true
+  name: observability
+  labels:
+    environment: production
+    managed-by: helm
+  
+  resourceQuota:
+    enabled: true
+    hard:
+      requests.cpu: "10"
+      requests.memory: 16Gi
+      limits.cpu: "20"
+      limits.memory: 32Gi
+      requests.storage: 100Gi
+      persistentvolumeclaims: "10"
+      pods: "100"
+      services: "50"
+  
+  limitRange:
+    enabled: true
+    container:
+      max:
+        cpu: "2"
+        memory: 4Gi
+      min:
+        cpu: 100m
+        memory: 64Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 200m
+        memory: 256Mi
+
+# ==============================================================================
+# POSTGRESQL DATABASE
+# ==============================================================================
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "15-alpine"
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+    accessMode: ReadWriteOnce
+  
+  service:
+    type: ClusterIP
+    port: 5432
+  
+  auth:
+    username: postgres
+    password: postgres
+    database: postgres
+  
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  
+  initdb:
+    scripts:
+      01-create-databases.sql: |
+        SELECT 'CREATE DATABASE userdb' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'userdb')\gexec
+        SELECT 'CREATE DATABASE productdb' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'productdb')\gexec
+        SELECT 'CREATE DATABASE inventorydb' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'inventorydb')\gexec
+        SELECT 'CREATE DATABASE paymentdb' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'paymentdb')\gexec
+
+# ==============================================================================
+# REDIS
+# ==============================================================================
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+  
+  service:
+    type: ClusterIP
+    port: 6379
+  
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ==============================================================================
+# KAFKA & ZOOKEEPER
+# ==============================================================================
+zookeeper:
+  enabled: true
+  image:
+    repository: confluentinc/cp-zookeeper
+    tag: latest
+  
+  replicas: 3
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+  
+  service:
+    type: ClusterIP
+    port: 2181
+  
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+kafka:
+  enabled: true
+  image:
+    repository: confluentinc/cp-kafka
+    tag: latest
+  
+  replicas: 3
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+  
+  service:
+    type: ClusterIP
+    port: 29092
+    externalPort: 9093
+  
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# ==============================================================================
+# OBSERVABILITY STACK
+# ==============================================================================
+prometheus:
+  enabled: true
+  image:
+    repository: prom/prometheus
+    tag: latest
+  
+  persistence:
+    enabled: true
+    size: 20Gi
+  
+  service:
+    type: ClusterIP
+    port: 9090
+    nodePort: 30090
+  
+  retention: 15d
+  
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 1000m
+      memory: 4Gi
+
+jaeger:
+  enabled: true
+  image:
+    repository: jaegertracing/all-in-one
+    tag: latest
+  
+  service:
+    type: NodePort
+    collectorPort: 14268
+    queryPort: 16686
+    nodePort: 30686
+  
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+grafana:
+  enabled: true
+  image:
+    repository: grafana/grafana
+    tag: latest
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+  
+  service:
+    type: NodePort
+    port: 3000
+    nodePort: 30000
+  
+  auth:
+    adminUser: admin
+    adminPassword: admin
+  
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# ==============================================================================
+# MICROSERVICES
+# ==============================================================================
+userService:
+  enabled: true
+  name: user-service
+  image:
+    repository: your-registry/user-service
+    tag: latest
+  
+  replicas: 3
+  
+  service:
+    type: ClusterIP
+    httpPort: 8080
+    grpcPort: 9090
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  env:
+    - name: ENVIRONMENT
+      value: production
+    - name: LOG_LEVEL
+      value: info
+
+productService:
+  enabled: true
+  name: product-service
+  image:
+    repository: your-registry/product-service
+    tag: latest
+  
+  replicas: 3
+  
+  service:
+    type: ClusterIP
+    httpPort: 8081
+    grpcPort: 9091
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+inventoryService:
+  enabled: true
+  name: inventory-service
+  image:
+    repository: your-registry/inventory-service
+    tag: latest
+  
+  replicas: 2
+  
+  service:
+    type: ClusterIP
+    httpPort: 8082
+    grpcPort: 9092
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+paymentService:
+  enabled: true
+  name: payment-service
+  image:
+    repository: your-registry/payment-service
+    tag: latest
+  
+  replicas: 2
+  
+  service:
+    type: ClusterIP
+    httpPort: 8083
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+# ==============================================================================
+# API GATEWAY
+# ==============================================================================
+apiGateway:
+  enabled: true
+  name: api-gateway
+  image:
+    repository: your-registry/api-gateway
+    tag: latest
+  
+  replicas: 2
+  
+  service:
+    type: LoadBalancer
+    port: 8000
+    nodePort: 30080
+  
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+# ==============================================================================
+# INGRESS
+# ==============================================================================
+ingress:
+  enabled: true
+  className: nginx
+  
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  
+  hosts:
+    - host: api.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: api-gateway
+          port: 8000
+    
+    - host: grafana.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: grafana
+          port: 3000
+    
+    - host: jaeger.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: jaeger
+          port: 16686
+  
+  tls:
+    - secretName: api-tls
+      hosts:
+        - api.example.com
+    - secretName: grafana-tls
+      hosts:
+        - grafana.example.com
+    - secretName: jaeger-tls
+      hosts:
+        - jaeger.example.com
+
+# ==============================================================================
+# SECRETS
+# ==============================================================================
+secrets:
+  database:
+    username: postgres
+    password: postgres
+    sslmode: disable
+  
+  jwt:
+    secretKey: my-super-secret-jwt-key-change-this-in-production-2024
+    expiration: 24h
+    issuer: full-observability
+  
+  redis:
+    password: ""
+
+# ==============================================================================
+# NETWORK POLICIES
+# ==============================================================================
+networkPolicies:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+

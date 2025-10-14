@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: {{ .Values.global.namespace }}
+data:
+  01-create-databases.sql: |
+{{- .Values.postgresql.initdb.scripts | nindent 4 | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: {{ .Values.global.namespace }}
+data:
+  ENVIRONMENT: {{ .Values.global.environment }}
+  LOG_LEVEL: "info"
+  USER_SERVICE_HTTP_ADDR: "user-service:8080"
+  USER_SERVICE_GRPC_ADDR: "user-service:9090"
+  PRODUCT_SERVICE_HTTP_ADDR: "product-service:8081"
+  PRODUCT_SERVICE_GRPC_ADDR: "product-service:9091"
+  INVENTORY_SERVICE_HTTP_ADDR: "inventory-service:8082"
+  INVENTORY_SERVICE_GRPC_ADDR: "inventory-service:9092"
+  PAYMENT_SERVICE_HTTP_ADDR: "payment-service:8083"
+  JAEGER_ENDPOINT: {{ include "full-observability.jaegerEndpoint" . }}
+  PROMETHEUS_URL: {{ include "full-observability.prometheusURL" . }}
+

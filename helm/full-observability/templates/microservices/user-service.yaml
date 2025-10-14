@@ -1,0 +1,118 @@
+{{- if .Values.userService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.userService.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.userService.name }}
+    component: microservice
+spec:
+  replicas: {{ .Values.userService.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.userService.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.userService.name }}
+        component: microservice
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.userService.service.httpPort }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: {{ .Values.userService.name }}
+          image: {{ .Values.global.imageRegistry }}/{{ .Values.userService.image.repository }}:{{ .Values.userService.image.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.userService.service.httpPort }}
+              name: http
+            - containerPort: {{ .Values.userService.service.grpcPort }}
+              name: grpc
+          env:
+            - name: HTTP_PORT
+              value: "{{ .Values.userService.service.httpPort }}"
+            - name: GRPC_PORT
+              value: "{{ .Values.userService.service.grpcPort }}"
+            - name: DB_NAME
+              value: "userdb"
+            {{- range .Values.userService.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+            - secretRef:
+                name: jwt-secret
+            - configMapRef:
+                name: app-config
+          resources:
+            {{- toYaml .Values.userService.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.userService.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.userService.name }}
+spec:
+  type: {{ .Values.userService.service.type }}
+  ports:
+    - port: {{ .Values.userService.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.userService.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    app: {{ .Values.userService.name }}
+---
+{{- if .Values.userService.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.userService.name }}-hpa
+  namespace: {{ .Values.global.namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.userService.name }}
+  minReplicas: {{ .Values.userService.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.userService.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.userService.autoscaling.targetCPUUtilizationPercentage }}
+    {{- if .Values.userService.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.userService.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}
+

@@ -1,0 +1,95 @@
+{{- if .Values.productService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.productService.name }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  replicas: {{ .Values.productService.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.productService.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.productService.name }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.productService.service.httpPort }}"
+    spec:
+      containers:
+        - name: {{ .Values.productService.name }}
+          image: {{ .Values.global.imageRegistry }}/{{ .Values.productService.image.repository }}:{{ .Values.productService.image.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.productService.service.httpPort }}
+              name: http
+            - containerPort: {{ .Values.productService.service.grpcPort }}
+              name: grpc
+          env:
+            - name: HTTP_PORT
+              value: "{{ .Values.productService.service.httpPort }}"
+            - name: GRPC_PORT
+              value: "{{ .Values.productService.service.grpcPort }}"
+            - name: DB_NAME
+              value: "productdb"
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+            - secretRef:
+                name: jwt-secret
+            - configMapRef:
+                name: app-config
+          resources:
+            {{- toYaml .Values.productService.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.productService.name }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  type: {{ .Values.productService.service.type }}
+  ports:
+    - port: {{ .Values.productService.service.httpPort }}
+      targetPort: http
+      name: http
+    - port: {{ .Values.productService.service.grpcPort }}
+      targetPort: grpc
+      name: grpc
+  selector:
+    app: {{ .Values.productService.name }}
+---
+{{- if .Values.productService.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.productService.name }}-hpa
+  namespace: {{ .Values.global.namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.productService.name }}
+  minReplicas: {{ .Values.productService.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.productService.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.productService.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- end }}
+
