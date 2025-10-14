@@ -1,0 +1,165 @@
+# ==============================================================================
+# KUBECTL CONTEXT COMMANDS
+# ==============================================================================
+# Manual commands for setting up kubectl context
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. CHECK KUBECTL INSTALLATION
+# ------------------------------------------------------------------------------
+kubectl version --client
+
+# ------------------------------------------------------------------------------
+# 2. CHECK CLUSTER CONNECTION
+# ------------------------------------------------------------------------------
+kubectl cluster-info
+kubectl get nodes
+
+# ------------------------------------------------------------------------------
+# 3. VIEW CURRENT CONTEXT
+# ------------------------------------------------------------------------------
+kubectl config current-context
+kubectl config get-contexts
+
+# ------------------------------------------------------------------------------
+# 4. VIEW CURRENT NAMESPACE
+# ------------------------------------------------------------------------------
+kubectl config view --minify | grep namespace
+
+# ------------------------------------------------------------------------------
+# 5. CREATE NAMESPACE (Apply namespace.yaml)
+# ------------------------------------------------------------------------------
+kubectl apply -f namespace.yaml
+
+# Verify namespace creation
+kubectl get namespace observability
+kubectl describe namespace observability
+
+# ------------------------------------------------------------------------------
+# 6. SET DEFAULT NAMESPACE FOR CURRENT CONTEXT
+# ------------------------------------------------------------------------------
+kubectl config set-context --current --namespace=observability
+
+# ------------------------------------------------------------------------------
+# 7. VERIFY NAMESPACE SWITCH
+# ------------------------------------------------------------------------------
+kubectl config view --minify | grep namespace
+# Should show: namespace: observability
+
+# ------------------------------------------------------------------------------
+# 8. CREATE A NEW CONTEXT WITH SPECIFIC NAMESPACE (Alternative Method)
+# ------------------------------------------------------------------------------
+# Get current context name
+CURRENT_CONTEXT=$(kubectl config current-context)
+
+# Create new context pointing to observability namespace
+kubectl config set-context observability-context \
+  --cluster=$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$CURRENT_CONTEXT\")].context.cluster}") \
+  --user=$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$CURRENT_CONTEXT\")].context.user}") \
+  --namespace=observability
+
+# Switch to the new context
+kubectl config use-context observability-context
+
+# ------------------------------------------------------------------------------
+# 9. VERIFY RBAC PERMISSIONS
+# ------------------------------------------------------------------------------
+# Check if you can create resources in the namespace
+kubectl auth can-i create deployments -n observability
+kubectl auth can-i create services -n observability
+kubectl auth can-i create pods -n observability
+kubectl auth can-i create secrets -n observability
+kubectl auth can-i create configmaps -n observability
+kubectl auth can-i create persistentvolumeclaims -n observability
+
+# Check all permissions
+kubectl auth can-i --list -n observability
+
+# ------------------------------------------------------------------------------
+# 10. VIEW NAMESPACE RESOURCES
+# ------------------------------------------------------------------------------
+# List all resources in namespace
+kubectl get all -n observability
+
+# View resource quotas
+kubectl get resourcequota -n observability
+kubectl describe resourcequota observability-quota -n observability
+
+# View limit ranges
+kubectl get limitrange -n observability
+kubectl describe limitrange observability-limitrange -n observability
+
+# View network policies
+kubectl get networkpolicy -n observability
+kubectl describe networkpolicy default-deny-all -n observability
+
+# ------------------------------------------------------------------------------
+# 11. SWITCH BACK TO DEFAULT NAMESPACE (if needed)
+# ------------------------------------------------------------------------------
+kubectl config set-context --current --namespace=default
+
+# ------------------------------------------------------------------------------
+# 12. DELETE NAMESPACE (Cleanup - USE WITH CAUTION!)
+# ------------------------------------------------------------------------------
+# This will delete ALL resources in the namespace
+# kubectl delete namespace observability
+
+# ==============================================================================
+# CONTEXT MANAGEMENT CHEAT SHEET
+# ==============================================================================
+
+# List all contexts
+kubectl config get-contexts
+
+# Switch to a specific context
+kubectl config use-context <context-name>
+
+# Rename a context
+kubectl config rename-context <old-name> <new-name>
+
+# Delete a context
+kubectl config delete-context <context-name>
+
+# View full kubeconfig
+kubectl config view
+
+# Set a cluster
+kubectl config set-cluster <cluster-name> --server=https://... --certificate-authority=...
+
+# Set credentials
+kubectl config set-credentials <user-name> --token=... --client-certificate=... --client-key=...
+
+# ==============================================================================
+# NAMESPACE OPERATIONS
+# ==============================================================================
+
+# Create namespace
+kubectl create namespace <name>
+
+# Delete namespace
+kubectl delete namespace <name>
+
+# Label namespace
+kubectl label namespace observability environment=production
+
+# Annotate namespace
+kubectl annotate namespace observability description="Production observability stack"
+
+# Get namespace details
+kubectl get namespace observability -o yaml
+
+# ==============================================================================
+# TROUBLESHOOTING
+# ==============================================================================
+
+# If namespace is stuck in Terminating state:
+kubectl get namespace observability -o json > tmp.json
+# Edit tmp.json and remove finalizers section
+kubectl replace --raw "/api/v1/namespaces/observability/finalize" -f tmp.json
+
+# Force delete resources
+kubectl delete pods --all -n observability --force --grace-period=0
+
+# View events in namespace
+kubectl get events -n observability --sort-by='.lastTimestamp'
+
