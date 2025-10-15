@@ -1,0 +1,38 @@
+# ==============================================================================
+# ANSIBLE REQUIREMENTS
+# ==============================================================================
+# Purpose: Define required Ansible collections and roles
+# Install: ansible-galaxy install -r requirements.yml
+# ==============================================================================
+
+---
+collections:
+  # Kubernetes core collection
+  - name: kubernetes.core
+    version: ">=2.4.0"
+  
+  # Community general collection
+  - name: community.general
+    version: ">=7.0.0"
+  
+  # Docker collection
+  - name: community.docker
+    version: ">=3.4.0"
+  
+  # PostgreSQL collection
+  - name: community.postgresql
+    version: ">=3.0.0"
+  
+  # AWS collection (for EKS integration)
+  - name: amazon.aws
+    version: ">=6.0.0"
+
+# External roles (from Ansible Galaxy)
+roles:
+  # Kubernetes cluster setup
+  - name: geerlingguy.docker
+    version: "6.1.0"
+  
+  - name: geerlingguy.kubernetes
+    version: "6.1.0"
+
