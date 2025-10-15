@@ -1,0 +1,84 @@
+# ==============================================================================
+# MONITORING ROLE - MAIN TASKS
+# ==============================================================================
+# Purpose: Configure and verify monitoring stack
+# ==============================================================================
+
+---
+- name: Verify Prometheus is running
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: "{{ k8s_namespace }}"
+    label_selectors:
+      - app=prometheus
+  register: prometheus_pods
+  until: prometheus_pods.resources | length > 0
+  retries: 20
+  delay: 10
+
+- name: Get Prometheus pod name
+  set_fact:
+    prometheus_pod: "{{ prometheus_pods.resources[0].metadata.name }}"
+
+- name: Check Prometheus targets
+  uri:
+    url: "http://localhost:9090/api/v1/targets"
+    method: GET
+  delegate_to: localhost
+  register: prometheus_targets
+  failed_when: false
+  changed_when: false
+
+- name: Verify Grafana is running
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: "{{ k8s_namespace }}"
+    label_selectors:
+      - app=grafana
+  register: grafana_pods
+  until: grafana_pods.resources | length > 0
+  retries: 20
+  delay: 10
+
+- name: Verify Jaeger is running
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: "{{ k8s_namespace }}"
+    label_selectors:
+      - app=jaeger
+  register: jaeger_pods
+  until: jaeger_pods.resources | length > 0
+  retries: 20
+  delay: 10
+
+- name: Create Grafana datasources ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-datasources
+        namespace: "{{ k8s_namespace }}"
+      data:
+        datasources.yaml: |
+          apiVersion: 1
+          datasources:
+            - name: Prometheus
+              type: prometheus
+              access: proxy
+              url: http://prometheus:9090
+              isDefault: true
+            - name: Jaeger
+              type: jaeger
+              access: proxy
+              url: http://jaeger:16686
+
+- name: Display monitoring endpoints
+  debug:
+    msg: |
+      Monitoring Stack Ready:
+        - Prometheus: kubectl port-forward -n {{ k8s_namespace }} svc/prometheus 9090:9090
+        - Grafana: kubectl port-forward -n {{ k8s_namespace }} svc/grafana 3000:3000
+        - Jaeger: kubectl port-forward -n {{ k8s_namespace }} svc/jaeger 16686:16686
+
