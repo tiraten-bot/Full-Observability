@@ -1207,6 +1207,52 @@ sequenceDiagram
     Note over P,I: Eventually Consistent<br/>Payment created immediately<br/>Inventory updated async
 ```
 
+## Infrastructure as Code & Automation
+
+```mermaid
+graph LR
+    subgraph "Infrastructure Provisioning"
+        TF[Terraform<br/>AWS Resources]
+        TF --> VPC[VPC + Subnets]
+        TF --> EKS[EKS Cluster]
+        TF --> RDS[RDS PostgreSQL]
+        TF --> MSK[MSK Kafka]
+    end
+    
+    subgraph "Configuration Management"
+        ANS[Ansible<br/>Automation]
+        ANS --> K8S[Kubernetes Deploy]
+        ANS --> ISTIO[Istio Config]
+        ANS --> MON[Monitoring Setup]
+        ANS --> DB[Database Init]
+    end
+    
+    subgraph "Container Orchestration"
+        HELM[Helm Charts<br/>Kubernetes]
+        HELM --> MS[Microservices]
+        HELM --> OBS[Observability]
+        HELM --> MESH[Service Mesh]
+    end
+    
+    subgraph "CI/CD Pipeline"
+        GH[GitHub Actions]
+        GH --> BUILD[Build Images]
+        GH --> TEST[Run Tests]
+        GH --> DEPLOY[Deploy to K8s]
+    end
+    
+    TF -.->|Creates| EKS
+    EKS -.->|Ready| ANS
+    ANS -.->|Deploys| HELM
+    HELM -.->|Manages| MS
+    GH -.->|Triggers| ANS
+    
+    style TF fill:#e1f0ff
+    style ANS fill:#ffe1e1
+    style HELM fill:#e1ffe1
+    style GH fill:#ffe1ff
+```
+
 ## Deployment Commands
 
 ### Terraform - AWS Infrastructure
@@ -1262,6 +1308,28 @@ helm upgrade full-observability ./full-observability -n observability
 ./uninstall.sh
 ```
 
+### Ansible Automation
+```bash
+# Install Ansible and dependencies
+cd ansible
+make install
+make requirements
+
+# Deploy full stack
+make deploy ENV=dev
+
+# Operations
+make health-check
+make backup
+make scale SERVICE=user-service REPLICAS=5
+make rollback SERVICE=payment-service
+
+# Advanced
+ansible-playbook playbooks/deploy-all.yml
+ansible-playbook playbooks/health-check.yml
+ansible-playbook playbooks/backup.yml
+```
+
 ### Istio Service Mesh
 ```bash
 # Install Istio
@@ -1296,6 +1364,7 @@ graph TB
         HELM[helm/<br/>Kubernetes Deployment]
         DOCKER[dockerfiles/<br/>Container Images]
         TF[terraform/<br/>Infrastructure as Code]
+        ANS[ansible/<br/>Automation & Config Mgmt]
     end
     
     subgraph "cmd/"
@@ -1332,6 +1401,12 @@ graph TB
         TFENV[environments/<br/>dev, staging, prod]
     end
     
+    subgraph "ansible/"
+        ANSPLAY[playbooks/<br/>deploy, backup, scale]
+        ANSROLE[roles/<br/>kubernetes, istio, database]
+        ANSINV[inventories/<br/>hosts, groups]
+    end
+    
     CMD --> U
     CMD --> P
     CMD --> I
@@ -1354,6 +1429,10 @@ graph TB
     TF --> TFMAIN
     TF --> TFMOD
     TF --> TFENV
+    
+    ANS --> ANSPLAY
+    ANS --> ANSROLE
+    ANS --> ANSINV
 ```
 
 ## Service Ports
@@ -1372,15 +1451,101 @@ graph TB
 | Redis | 6379 | - | - | Cache, Rate Limiting |
 | Kafka | 9093 | - | - | Event Streaming |
 
+## Ansible Automation Flow
+
+```mermaid
+flowchart TD
+    Start[ansible-playbook deploy-all.yml] --> Check{Pre-flight Checks}
+    
+    Check -->|kubectl OK| NS[Create Namespace]
+    Check -->|kubectl FAIL| Error1[Error: kubectl not configured]
+    
+    NS --> Secrets[Create Secrets<br/>DB, JWT, Redis]
+    Secrets --> ConfigMaps[Create ConfigMaps<br/>App Config, Prometheus]
+    
+    ConfigMaps --> InstallIstio{Istio Installed?}
+    
+    InstallIstio -->|No| DownloadIstio[Download Istio]
+    InstallIstio -->|Yes| HelmDeploy
+    
+    DownloadIstio --> InstallIstioCtl[Install istioctl]
+    InstallIstioCtl --> ApplyIstio[Apply Istio Profile]
+    ApplyIstio --> EnableInjection[Enable Sidecar Injection]
+    
+    EnableInjection --> HelmDeploy[Deploy Helm Chart<br/>Infrastructure + Services]
+    
+    HelmDeploy --> WaitDB[Wait for PostgreSQL]
+    WaitDB --> WaitRedis[Wait for Redis]
+    WaitRedis --> WaitKafka[Wait for Kafka]
+    
+    WaitKafka --> InitDB[Initialize Databases<br/>Create userdb, productdb, etc.]
+    
+    InitDB --> WaitServices[Wait for Microservices<br/>User, Product, Inventory, Payment]
+    
+    WaitServices --> ApplyIstioConfig[Apply Istio Config<br/>Gateway, VirtualService, DestinationRule]
+    
+    ApplyIstioConfig --> ApplymTLS[Apply mTLS<br/>STRICT mode]
+    
+    ApplymTLS --> ApplyAuthz[Apply Authorization Policies]
+    
+    ApplyAuthz --> Verify[Verification<br/>Health Checks, Pod Status]
+    
+    Verify --> Success[Deployment Complete ✅]
+    
+    WaitDB -->|Timeout| Error2[Error: PostgreSQL not ready]
+    WaitServices -->|Timeout| Error3[Error: Services not ready]
+    
+    style Success fill:#99ff99
+    style Error1 fill:#ff9999
+    style Error2 fill:#ff9999
+    style Error3 fill:#ff9999
+    style HelmDeploy fill:#e1f0ff
+    style ApplyIstioConfig fill:#ffe1e1
+```
+
 ## Key Features
 
+### Architecture & Patterns
 - **Microservices Architecture**: Independent, scalable services
 - **CQRS Pattern**: Separate read and write operations
 - **Event-Driven**: Kafka-based asynchronous communication
-- **Service Mesh**: Istio for traffic management, security, observability
-- **Observability**: Prometheus metrics, Jaeger tracing, Grafana dashboards
-- **Security**: JWT authentication, mTLS encryption, RBAC authorization
-- **Resilience**: Circuit breakers, retries, timeouts, health checks
-- **Scalability**: Horizontal Pod Autoscaling, load balancing
-- **Deployment**: Helm charts, canary deployments, blue-green deployments
-- **API Documentation**: Swagger/OpenAPI for all services
+- **Clean Architecture**: Domain-driven design with clear layers
+
+### Service Mesh & Security
+- **Istio Service Mesh**: Traffic management, security, observability
+- **mTLS Encryption**: Automatic certificate management and rotation
+- **JWT Authentication**: Token-based authentication
+- **RBAC Authorization**: Role-based access control
+- **Network Policies**: Micro-segmentation and zero-trust
+
+### Observability & Monitoring
+- **Prometheus**: Time-series metrics collection
+- **Grafana**: Rich dashboards and visualization
+- **Jaeger**: Distributed tracing across services
+- **OpenTelemetry**: Unified observability framework
+
+### Resilience & Reliability
+- **Circuit Breakers**: Prevent cascade failures
+- **Retry Policies**: Automatic retry with exponential backoff
+- **Timeouts**: Request deadline enforcement
+- **Health Checks**: Liveness, readiness, and startup probes
+- **Load Balancing**: Multiple algorithms (round-robin, least-request, consistent-hash)
+
+### Scalability & Performance
+- **Horizontal Pod Autoscaling**: CPU/memory-based auto-scaling
+- **Connection Pooling**: Optimized database and service connections
+- **Caching**: Redis-based caching and rate limiting
+- **Async Processing**: Kafka event-driven architecture
+
+### Deployment & DevOps
+- **Infrastructure as Code**: Terraform for AWS resources
+- **Configuration Management**: Ansible automation
+- **Helm Charts**: Kubernetes package management
+- **Canary Deployments**: Gradual rollout with traffic splitting
+- **Blue-Green Deployments**: Instant switch with rollback capability
+- **GitOps Ready**: Declarative configuration
+
+### API & Documentation
+- **Swagger/OpenAPI**: Interactive API documentation for all services
+- **gRPC**: High-performance inter-service communication
+- **RESTful APIs**: Standard HTTP/JSON APIs
