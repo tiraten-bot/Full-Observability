@@ -1,0 +1,114 @@
+# ==============================================================================
+# KUBERNETES ROLE - MAIN TASKS
+# ==============================================================================
+# Purpose: Deploy and manage Kubernetes resources
+# ==============================================================================
+
+---
+- name: Ensure kubectl is configured
+  command: kubectl cluster-info
+  register: cluster_info
+  changed_when: false
+  failed_when: cluster_info.rc != 0
+
+- name: Create namespace
+  kubernetes.core.k8s:
+    name: "{{ k8s_namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Apply resource quotas
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ResourceQuota
+      metadata:
+        name: "{{ k8s_namespace }}-quota"
+        namespace: "{{ k8s_namespace }}"
+      spec:
+        hard:
+          requests.cpu: "10"
+          requests.memory: 16Gi
+          limits.cpu: "20"
+          limits.memory: 32Gi
+          pods: "100"
+
+- name: Apply limit ranges
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: LimitRange
+      metadata:
+        name: "{{ k8s_namespace }}-limitrange"
+        namespace: "{{ k8s_namespace }}"
+      spec:
+        limits:
+          - type: Container
+            max:
+              cpu: "2"
+              memory: 4Gi
+            min:
+              cpu: 100m
+              memory: 64Mi
+            default:
+              cpu: 500m
+              memory: 512Mi
+            defaultRequest:
+              cpu: 200m
+              memory: 256Mi
+
+- name: Create secrets
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ item.name }}"
+        namespace: "{{ k8s_namespace }}"
+      type: Opaque
+      stringData: "{{ item.data }}"
+  loop:
+    - name: postgres-secret
+      data:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: "{{ postgres_password }}"
+        DB_HOST: postgres
+        DB_PORT: "5432"
+    - name: jwt-secret
+      data:
+        JWT_SECRET_KEY: "{{ jwt_secret_key }}"
+        JWT_EXPIRATION: "24h"
+    - name: redis-secret
+      data:
+        REDIS_ADDR: "redis:6379"
+        REDIS_PASSWORD: ""
+  no_log: true
+
+- name: Deploy Helm chart
+  kubernetes.core.helm:
+    name: "{{ helm_release_name }}"
+    chart_ref: "{{ helm_chart_path }}"
+    release_namespace: "{{ k8s_namespace }}"
+    values_files:
+      - "{{ helm_chart_path }}/values-{{ environment }}.yaml"
+    wait: true
+    timeout: 15m
+    state: present
+
+- name: Get deployment status
+  kubernetes.core.k8s_info:
+    kind: Deployment
+    namespace: "{{ k8s_namespace }}"
+  register: deployments
+
+- name: Display deployment status
+  debug:
+    msg: "{{ item.metadata.name }}: {{ item.status.readyReplicas | default(0) }}/{{ item.spec.replicas }} ready"
+  loop: "{{ deployments.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+
