@@ -1,0 +1,100 @@
+# ==============================================================================
+# ANSIBLE PLAYBOOK - SCALE SERVICES
+# ==============================================================================
+# Purpose: Scale microservices up or down
+# Usage: ansible-playbook playbooks/scale.yml -e "service=user-service replicas=5"
+# ==============================================================================
+
+---
+- name: Scale Kubernetes Deployments
+  hosts: localhost
+  gather_facts: no
+  
+  vars:
+    namespace: observability
+    service_name: "{{ service }}"
+    replica_count: "{{ replicas | int }}"
+  
+  tasks:
+    # ==========================================================================
+    # VALIDATION
+    # ==========================================================================
+    - name: Validate inputs
+      assert:
+        that:
+          - service_name is defined
+          - replica_count is defined
+          - replica_count | int >= 0
+          - replica_count | int <= 20
+        fail_msg: "Invalid input: service={{ service_name }}, replicas={{ replica_count }}"
+    
+    # ==========================================================================
+    # GET CURRENT STATE
+    # ==========================================================================
+    - name: Get current deployment
+      kubernetes.core.k8s_info:
+        kind: Deployment
+        name: "{{ service_name }}"
+        namespace: "{{ namespace }}"
+      register: current_deployment
+      failed_when: current_deployment.resources | length == 0
+    
+    - name: Get current replicas
+      set_fact:
+        current_replicas: "{{ current_deployment.resources[0].spec.replicas }}"
+    
+    - name: Display current state
+      debug:
+        msg: "Current replicas for {{ service_name }}: {{ current_replicas }}"
+    
+    # ==========================================================================
+    # SCALE DEPLOYMENT
+    # ==========================================================================
+    - name: Scale deployment
+      command: kubectl scale deployment/{{ service_name }} --replicas={{ replica_count }} -n {{ namespace }}
+      when: current_replicas | int != replica_count | int
+    
+    - name: Wait for scaling to complete
+      kubernetes.core.k8s_info:
+        kind: Deployment
+        name: "{{ service_name }}"
+        namespace: "{{ namespace }}"
+      register: scaled_deployment
+      until: scaled_deployment.resources[0].status.readyReplicas | default(0) == replica_count | int
+      retries: 60
+      delay: 5
+      when: current_replicas | int != replica_count | int
+    
+    # ==========================================================================
+    # VERIFICATION
+    # ==========================================================================
+    - name: Get pod status
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app={{ service_name }}
+      register: pods
+    
+    - name: Display pod status
+      debug:
+        msg: "{{ item.metadata.name }}: {{ item.status.phase }}"
+      loop: "{{ pods.resources }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+    
+    # ==========================================================================
+    # SUMMARY
+    # ==========================================================================
+    - name: Scaling summary
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════╗
+          ║              SCALING COMPLETED                             ║
+          ╚════════════════════════════════════════════════════════════╝
+          
+          Service: {{ service_name }}
+          Previous replicas: {{ current_replicas }}
+          New replicas: {{ replica_count }}
+          Status: {{ scaled_deployment.resources[0].status.conditions | selectattr('type', 'equalto', 'Available') | map(attribute='status') | first }}
+
