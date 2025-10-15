@@ -1,0 +1,192 @@
+# ==============================================================================
+# SECURITY SCANNING PIPELINE
+# ==============================================================================
+# Purpose: Scan code and dependencies for vulnerabilities
+# Triggers: Daily, on push, manual
+# ==============================================================================
+
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight
+  workflow_dispatch:
+
+jobs:
+  # ============================================================================
+  # JOB 1: CODE SCANNING (CodeQL)
+  # ============================================================================
+  codeql:
+    name: CodeQL Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+          queries: security-extended
+      
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:go"
+
+  # ============================================================================
+  # JOB 2: DEPENDENCY SCANNING
+  # ============================================================================
+  dependencies:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+      
+      - name: Run Nancy (Sonatype)
+        run: |
+          go list -json -m all | docker run --rm -i sonatypecommunity/nancy:latest sleuth
+
+  # ============================================================================
+  # JOB 3: CONTAINER IMAGE SCANNING
+  # ============================================================================
+  container-scan:
+    name: Container Image Security Scan
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [user, product, inventory, payment, gateway]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build image
+        run: |
+          docker build -f dockerfiles/${{ matrix.service }}.Dockerfile \
+            -t ${{ matrix.service }}-service:scan .
+      
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.service }}-service:scan
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Run Grype scan
+        uses: anchore/scan-action@v3
+        with:
+          image: ${{ matrix.service }}-service:scan
+          fail-build: true
+          severity-cutoff: high
+
+  # ============================================================================
+  # JOB 4: KUBERNETES MANIFEST SCANNING
+  # ============================================================================
+  k8s-security:
+    name: Kubernetes Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: helm/full-observability/templates
+          framework: kubernetes
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+      
+      - name: Upload results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-results.sarif
+        if: always()
+      
+      - name: Run Kubesec
+        run: |
+          docker run --rm -v $(pwd):/project \
+            kubesec/kubesec:latest scan \
+            /project/helm/full-observability/templates/**/*.yaml
+
+  # ============================================================================
+  # JOB 5: SECRET SCANNING
+  # ============================================================================
+  secrets:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Run TruffleHog
+        run: |
+          docker run --rm -v $(pwd):/repo \
+            trufflesecurity/trufflehog:latest \
+            filesystem /repo --json > trufflehog-results.json
+      
+      - name: Check for secrets
+        run: |
+          if [ -s trufflehog-results.json ]; then
+            echo "⚠️ Secrets detected!"
+            cat trufflehog-results.json
+            exit 1
+          fi
+
+  # ============================================================================
+  # JOB 6: SECURITY REPORT
+  # ============================================================================
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [codeql, dependencies, container-scan, k8s-security, secrets]
+    if: always()
+    
+    steps:
+      - name: Security summary
+        run: |
+          echo "# Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- CodeQL: ${{ needs.codeql.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependencies: ${{ needs.dependencies.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Container Scan: ${{ needs.container-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- K8s Security: ${{ needs.k8s-security.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Secret Scan: ${{ needs.secrets.result }}" >> $GITHUB_STEP_SUMMARY
+
