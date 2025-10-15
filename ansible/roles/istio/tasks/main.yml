@@ -1,0 +1,124 @@
+# ==============================================================================
+# ISTIO ROLE - MAIN TASKS
+# ==============================================================================
+# Purpose: Install and configure Istio Service Mesh
+# ==============================================================================
+
+---
+- name: Check if Istio is already installed
+  command: kubectl get namespace istio-system
+  register: istio_namespace_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Istio
+  block:
+    - name: Download istioctl
+      get_url:
+        url: "https://github.com/istio/istio/releases/download/{{ istio_version }}/istioctl-{{ istio_version }}-linux-amd64.tar.gz"
+        dest: /tmp/istioctl.tar.gz
+        mode: '0644'
+    
+    - name: Extract istioctl
+      unarchive:
+        src: /tmp/istioctl.tar.gz
+        dest: /usr/local/bin
+        remote_src: yes
+        creates: /usr/local/bin/istioctl
+    
+    - name: Make istioctl executable
+      file:
+        path: /usr/local/bin/istioctl
+        mode: '0755'
+    
+    - name: Create Istio configuration
+      template:
+        src: istio-config.yaml.j2
+        dest: /tmp/istio-config.yaml
+    
+    - name: Install Istio with custom configuration
+      command: istioctl install -f /tmp/istio-config.yaml -y
+      args:
+        creates: /tmp/istio-installed.flag
+    
+    - name: Create installation flag
+      file:
+        path: /tmp/istio-installed.flag
+        state: touch
+  
+  when: istio_namespace_check.rc != 0
+
+- name: Wait for Istio components
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: istio-system
+    label_selectors:
+      - app={{ item }}
+  register: istio_pod_status
+  until: istio_pod_status.resources | length > 0 and istio_pod_status.resources[0].status.phase == "Running"
+  retries: 30
+  delay: 10
+  loop:
+    - istiod
+    - istio-ingressgateway
+
+- name: Label namespace for sidecar injection
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ k8s_namespace }}"
+    merge_type: merge
+    definition:
+      metadata:
+        labels:
+          istio-injection: enabled
+
+- name: Apply Istio Gateway
+  kubernetes.core.k8s:
+    state: present
+    namespace: "{{ k8s_namespace }}"
+    definition: "{{ lookup('file', '{{ playbook_dir }}/../../helm/full-observability/templates/istio/01-gateway.yaml') | from_yaml }}"
+
+- name: Apply Istio VirtualServices
+  kubernetes.core.k8s:
+    state: present
+    namespace: "{{ k8s_namespace }}"
+    src: "{{ item }}"
+  loop:
+    - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/02-virtualservice-api-gateway.yaml"
+    - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/03-virtualservice-user.yaml"
+    - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/04-virtualservice-product.yaml"
+
+- name: Apply Istio DestinationRules
+  kubernetes.core.k8s:
+    state: present
+    namespace: "{{ k8s_namespace }}"
+    src: "{{ item }}"
+  loop:
+    - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/08-destinationrule-user.yaml"
+    - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/09-destinationrule-product.yaml"
+
+- name: Configure mTLS
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: security.istio.io/v1beta1
+      kind: PeerAuthentication
+      metadata:
+        name: default-mtls
+        namespace: "{{ k8s_namespace }}"
+      spec:
+        mtls:
+          mode: STRICT
+
+- name: Verify Istio proxy status
+  command: istioctl proxy-status
+  register: proxy_status
+  changed_when: false
+  failed_when: false
+
+- name: Display Istio status
+  debug:
+    msg: "{{ proxy_status.stdout_lines }}"
+  when: proxy_status.rc == 0
+
