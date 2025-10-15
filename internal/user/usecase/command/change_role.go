@@ -49,4 +49,3 @@ func (h *ChangeRoleHandler) Handle(cmd ChangeRoleCommand) (*domain.User, error) 
 
 	return user, nil
 }
-

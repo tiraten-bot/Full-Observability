@@ -67,4 +67,3 @@ func (h *CreateProductHandler) Handle(cmd CreateProductCommand) (*domain.Product
 
 	return product, nil
 }
-

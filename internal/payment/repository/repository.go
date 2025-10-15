@@ -65,4 +65,3 @@ func (r *GormPaymentRepository) UpdateStatus(id uint, status string) error {
 		Where("id = ?", id).
 		Update("status", status).Error
 }
-

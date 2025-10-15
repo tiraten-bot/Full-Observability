@@ -38,7 +38,7 @@ func TracingMiddleware() fiber.Handler {
 		// Inject trace context into headers for backend services
 		carrier := propagation.HeaderCarrier{}
 		otel.GetTextMapPropagator().Inject(ctx, carrier)
-		
+
 		for key, values := range carrier {
 			for _, value := range values {
 				c.Request().Header.Set(key, value)
@@ -78,4 +78,3 @@ func TracingMiddleware() fiber.Handler {
 		return err
 	}
 }
-

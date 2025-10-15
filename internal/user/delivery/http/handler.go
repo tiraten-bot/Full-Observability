@@ -35,14 +35,14 @@ type UserHandler struct {
 	requestLatency *prometheus.HistogramVec
 	requestSummary *prometheus.SummaryVec
 	activeUsers    prometheus.Gauge
-	
+
 	// Business metrics
-	failedLogins       *prometheus.CounterVec
-	successfulLogins   prometheus.Counter
-	userRegistrations  prometheus.Counter
-	usersByRole        *prometheus.GaugeVec
-	inactiveUsers      prometheus.Gauge
-	authErrors         *prometheus.CounterVec
+	failedLogins      *prometheus.CounterVec
+	successfulLogins  prometheus.Counter
+	userRegistrations prometheus.Counter
+	usersByRole       *prometheus.GaugeVec
+	inactiveUsers     prometheus.Gauge
+	authErrors        *prometheus.CounterVec
 }
 
 // NewUserHandler creates a new user handler (manual DI for backwards compatibility)
@@ -245,7 +245,7 @@ func (h *UserHandler) metricsMiddleware(endpoint string, next http.HandlerFunc) 
 		next.ServeHTTP(rw, r)
 
 		duration := time.Since(start).Seconds()
-		
+
 		// Record metrics
 		h.requestCounter.WithLabelValues(r.Method, endpoint, strconv.Itoa(rw.statusCode)).Inc()
 		h.requestLatency.WithLabelValues(r.Method, endpoint).Observe(duration)
@@ -643,7 +643,7 @@ func (h *UserHandler) updateBusinessMetrics() {
 	// Update gauges
 	h.activeUsers.Set(float64(activeCount))
 	h.inactiveUsers.Set(float64(inactiveCount))
-	
+
 	// Update role counts
 	for role, count := range roleCount {
 		h.usersByRole.WithLabelValues(role).Set(float64(count))

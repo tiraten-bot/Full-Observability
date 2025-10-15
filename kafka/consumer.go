@@ -255,4 +255,3 @@ func (h *consumerGroupHandler) handleMessage(ctx context.Context, message *saram
 			Msg("Unknown event type")
 	}
 }
-

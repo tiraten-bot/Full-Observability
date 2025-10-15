@@ -88,4 +88,3 @@ func InitializeGRPCServer(db *gorm.DB) (*grpcDelivery.InventoryGRPCServer, error
 	)
 	return nil, nil
 }
-

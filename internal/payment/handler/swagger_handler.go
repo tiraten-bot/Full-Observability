@@ -98,4 +98,3 @@ func (h *PaymentHandler) GetMyPaymentsDoc() {}
 // @Failure 503 {object} object{success=bool,error=string}
 // @Router /health [get]
 func (h *PaymentHandler) HealthCheckDoc() {}
-

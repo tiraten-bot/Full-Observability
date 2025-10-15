@@ -25,9 +25,9 @@ type ProductHandler struct {
 	updateStockHandler *command.UpdateStockHandler
 
 	// Query handlers
-	getProductHandler  *query.GetProductHandler
-	listHandler        *query.ListProductsHandler
-	statsHandler       *query.GetStatsHandler
+	getProductHandler *query.GetProductHandler
+	listHandler       *query.ListProductsHandler
+	statsHandler      *query.GetStatsHandler
 
 	repo           domain.ProductRepository
 	userClient     *client.UserServiceClient
@@ -35,7 +35,7 @@ type ProductHandler struct {
 	requestLatency *prometheus.HistogramVec
 	requestSummary *prometheus.SummaryVec
 	totalProducts  prometheus.Gauge
-	
+
 	// Business metrics
 	outOfStockProducts prometheus.Gauge
 	lowStockProducts   prometheus.Gauge
@@ -235,7 +235,7 @@ func (h *ProductHandler) metricsMiddleware(endpoint string, next http.HandlerFun
 		next.ServeHTTP(rw, r)
 
 		duration := time.Since(start).Seconds()
-		
+
 		// Record metrics
 		h.requestCounter.WithLabelValues(r.Method, endpoint, strconv.Itoa(rw.statusCode)).Inc()
 		h.requestLatency.WithLabelValues(r.Method, endpoint).Observe(duration)
@@ -587,7 +587,7 @@ func (h *ProductHandler) updateBusinessMetrics() {
 		if product.Stock == 0 {
 			outOfStock++
 		}
-		
+
 		// Count low stock products
 		if product.Stock > 0 && product.Stock <= lowStockThreshold {
 			lowStock++
@@ -602,12 +602,12 @@ func (h *ProductHandler) updateBusinessMetrics() {
 	// Update gauges
 	h.outOfStockProducts.Set(float64(outOfStock))
 	h.lowStockProducts.Set(float64(lowStock))
-	
+
 	// Update category counts
 	for category, count := range categoryCount {
 		h.productsByCategory.WithLabelValues(category).Set(float64(count))
 	}
-	
+
 	// Update total products
 	h.totalProducts.Set(float64(len(products)))
 }

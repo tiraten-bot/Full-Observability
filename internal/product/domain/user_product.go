@@ -22,4 +22,3 @@ type UserFavoriteRepository interface {
 	GetUserFavorites(userID uint) ([]uint, error)
 	IsFavorite(userID, productID uint) (bool, error)
 }
-

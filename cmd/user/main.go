@@ -33,7 +33,7 @@ func main() {
 	serviceName := getEnv("OTEL_SERVICE_NAME", "user-service")
 	isDevelopment := getEnv("ENVIRONMENT", "development") == "development"
 	logger.Init(serviceName, isDevelopment)
-	
+
 	// Set log level from environment
 	logLevel := getEnv("LOG_LEVEL", "info")
 	logger.SetLevel(logLevel)
@@ -116,13 +116,13 @@ func startHTTPServer(repo *repository.GormUserRepository, db *sql.DB, port strin
 	router := mux.NewRouter()
 
 	// Add middlewares (order matters!)
-	router.Use(httpDelivery.LoggingMiddleware)  // Logging first
+	router.Use(httpDelivery.LoggingMiddleware) // Logging first
 	router.Use(func(next http.Handler) http.Handler {
 		return httpDelivery.TracingMiddleware("http-request", next)
 	})
 
 	handler.RegisterRoutes(router)
-	
+
 	// Health check endpoint
 	handler.RegisterHealthCheck(router, db)
 
@@ -154,10 +154,10 @@ func startGRPCServer(repo *repository.GormUserRepository, port string) {
 	// Create gRPC server with interceptors
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
-			grpcDelivery.TracingInterceptor,  // Add tracing first
-			grpcDelivery.MetricsInterceptor,  // Collect metrics
-			grpcDelivery.LoggingInterceptor,  // Log requests
-			grpcDelivery.AuthInterceptor,     // Verify auth
+			grpcDelivery.TracingInterceptor, // Add tracing first
+			grpcDelivery.MetricsInterceptor, // Collect metrics
+			grpcDelivery.LoggingInterceptor, // Log requests
+			grpcDelivery.AuthInterceptor,    // Verify auth
 		),
 	)
 

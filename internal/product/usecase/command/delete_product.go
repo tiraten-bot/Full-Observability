@@ -38,4 +38,3 @@ func (h *DeleteProductHandler) Handle(cmd DeleteProductCommand) error {
 
 	return nil
 }
-

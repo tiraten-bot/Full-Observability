@@ -44,4 +44,3 @@ func NewPostgresConnection(cfg Config) (*sql.DB, error) {
 	log.Println("Successfully connected to PostgreSQL database")
 	return db, nil
 }
-

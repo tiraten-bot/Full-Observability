@@ -152,4 +152,3 @@ func InitializeGRPCServer(db *gorm.DB) (*grpc.UserServer, error) {
 	)
 	return nil, nil
 }
-

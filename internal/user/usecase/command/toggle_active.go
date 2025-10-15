@@ -46,4 +46,3 @@ func (h *ToggleActiveHandler) Handle(cmd ToggleActiveCommand) (*domain.User, err
 
 	return user, nil
 }
-

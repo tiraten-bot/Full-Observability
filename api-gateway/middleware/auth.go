@@ -85,4 +85,3 @@ func OptionalAuthMiddleware() fiber.Handler {
 		return c.Next()
 	}
 }
-

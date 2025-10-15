@@ -25,4 +25,3 @@ const (
 const (
 	TopicProductPurchased = "product-purchased"
 )
-

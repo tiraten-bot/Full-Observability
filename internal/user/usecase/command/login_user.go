@@ -66,4 +66,3 @@ func (h *LoginUserHandler) Handle(cmd LoginUserCommand) (*LoginResponse, error) 
 		User:  user,
 	}, nil
 }
-

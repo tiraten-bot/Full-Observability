@@ -103,7 +103,7 @@ func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig, cbManager *middlewar
 		defer cancel()
 
 		healthStatus := healthChecker.CheckAllServices(ctx)
-		
+
 		statusCode := fiber.StatusOK
 		if healthStatus.Status == "unhealthy" {
 			statusCode = fiber.StatusServiceUnavailable
@@ -132,11 +132,11 @@ func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig, cbManager *middlewar
 	app.Get("/health/loadbalancer", func(c *fiber.Ctx) error {
 		lbs := reverseProxy.GetLoadBalancers()
 		stats := make(map[string]interface{})
-		
+
 		for name, lb := range lbs {
 			stats[name] = lb.GetStats()
 		}
-		
+
 		return c.JSON(fiber.Map{
 			"load_balancers": stats,
 		})
@@ -174,7 +174,7 @@ func SetupRoutes(app *fiber.App, cfg *config.GatewayConfig, cbManager *middlewar
 		// Cache stats endpoint
 		app.Get("/admin/cache/stats", func(c *fiber.Ctx) error {
 			ctx := context.Background()
-			
+
 			// Count cache keys
 			cacheKeys := 0
 			iter := redisClient.Scan(ctx, 0, "cache:*", 0).Iterator()
@@ -213,7 +213,7 @@ func registerServiceRoutes(app *fiber.App, route RouteDefinition, proxyHandler *
 
 	// Apply middleware based on route requirements
 	var middlewares []fiber.Handler
-	
+
 	if route.RequireAdmin {
 		// Admin routes need both auth and admin check
 		middlewares = append(middlewares, middleware.AuthMiddleware(), middleware.AdminMiddleware())
@@ -236,4 +236,3 @@ func registerServiceRoutes(app *fiber.App, route RouteDefinition, proxyHandler *
 		app.All(route.Prefix, handler)
 	}
 }
-

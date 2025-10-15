@@ -46,4 +46,3 @@ func (h *ListProductsHandler) Handle(query ListProductsQuery) ([]domain.Product,
 
 	return products, nil
 }
-

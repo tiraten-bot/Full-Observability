@@ -66,9 +66,9 @@ type CommandHandlers struct {
 
 // QueryHandlers is a struct that holds all query handlers
 type QueryHandlers struct {
-	GetProductHandler  *query.GetProductHandler
-	ListHandler        *query.ListProductsHandler
-	StatsHandler       *query.GetStatsHandler
+	GetProductHandler *query.GetProductHandler
+	ListHandler       *query.ListProductsHandler
+	StatsHandler      *query.GetStatsHandler
 }
 
 // ProvideCommandHandlers provides all command handlers
@@ -93,9 +93,9 @@ func ProvideQueryHandlers(
 	statsHandler *query.GetStatsHandler,
 ) *QueryHandlers {
 	return &QueryHandlers{
-		GetProductHandler:  getProductHandler,
-		ListHandler:        listHandler,
-		StatsHandler:       statsHandler,
+		GetProductHandler: getProductHandler,
+		ListHandler:       listHandler,
+		StatsHandler:      statsHandler,
 	}
 }
 
@@ -143,4 +143,3 @@ func InitializeGRPCServer(db *gorm.DB) (*grpc.ProductServer, error) {
 	)
 	return nil, nil
 }
-

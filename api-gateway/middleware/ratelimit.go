@@ -31,7 +31,7 @@ func (rl *RateLimiter) Middleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Get identifier (user ID if authenticated, otherwise IP)
 		identifier := c.IP()
-		
+
 		if userID := c.Locals("user_id"); userID != nil {
 			identifier = fmt.Sprintf("user:%v", userID)
 		}
@@ -59,8 +59,8 @@ func (rl *RateLimiter) Middleware() fiber.Handler {
 				Msg("Rate limit exceeded")
 
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error":   "Rate limit exceeded",
-				"message": fmt.Sprintf("Too many requests. Try again in %v", time.Until(resetTime).Round(time.Second)),
+				"error":       "Rate limit exceeded",
+				"message":     fmt.Sprintf("Too many requests. Try again in %v", time.Until(resetTime).Round(time.Second)),
 				"retry_after": time.Until(resetTime).Seconds(),
 			})
 		}
@@ -126,4 +126,3 @@ func UserRateLimiter(redisClient *redis.Client) fiber.Handler {
 	limiter := NewRateLimiter(redisClient, 60, time.Minute) // 60 req/min per user
 	return limiter.Middleware()
 }
-

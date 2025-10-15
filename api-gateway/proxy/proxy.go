@@ -34,7 +34,7 @@ type RetryConfig struct {
 func NewReverseProxy(cfg *config.GatewayConfig) *ReverseProxy {
 	// Initialize load balancers for each service
 	loadBalancers := make(map[string]*loadbalancer.RoundRobin)
-	
+
 	for name, svc := range cfg.Services {
 		loadBalancers[name] = loadbalancer.NewRoundRobin(svc.Instances)
 	}
@@ -120,7 +120,7 @@ func (p *ReverseProxy) ProxyRequest(c *fiber.Ctx, serviceName string) error {
 		resp, err := p.client.Do(req)
 		if err != nil {
 			lastErr = err
-			
+
 			// Retry if not last attempt
 			if attempt < maxAttempts-1 {
 				logger.Logger.Warn().
@@ -129,7 +129,7 @@ func (p *ReverseProxy) ProxyRequest(c *fiber.Ctx, serviceName string) error {
 					Int("attempt", attempt+1).
 					Dur("delay", delay).
 					Msg("Request failed, retrying...")
-				
+
 				time.Sleep(delay)
 				delay = time.Duration(float64(delay) * p.retryConfig.Multiplier)
 				if delay > p.retryConfig.MaxDelay {
@@ -137,7 +137,7 @@ func (p *ReverseProxy) ProxyRequest(c *fiber.Ctx, serviceName string) error {
 				}
 				continue
 			}
-			
+
 			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
 				"error":   "Failed to reach backend service",
 				"service": serviceName,
@@ -154,7 +154,7 @@ func (p *ReverseProxy) ProxyRequest(c *fiber.Ctx, serviceName string) error {
 				Int("attempt", attempt+1).
 				Dur("delay", delay).
 				Msg("Retryable status code, retrying...")
-			
+
 			time.Sleep(delay)
 			delay = time.Duration(float64(delay) * p.retryConfig.Multiplier)
 			if delay > p.retryConfig.MaxDelay {
@@ -190,7 +190,7 @@ func (p *ReverseProxy) ProxyRequest(c *fiber.Ctx, serviceName string) error {
 	if lastErr != nil {
 		errorDetails = lastErr.Error()
 	}
-	
+
 	return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{
 		"error":   "All retry attempts failed",
 		"service": serviceName,
@@ -218,7 +218,7 @@ func (p *ReverseProxy) buildTargetURL(c *fiber.Ctx, service config.ServiceConfig
 // buildTargetURLWithServer constructs the full URL with a specific server
 func (p *ReverseProxy) buildTargetURLWithServer(c *fiber.Ctx, serverURL string) string {
 	path := string(c.Request().URI().Path())
-	
+
 	// Build query string
 	queryString := string(c.Request().URI().QueryString())
 	if queryString != "" {
@@ -273,4 +273,3 @@ func (p *ReverseProxy) copyResponseHeaders(c *fiber.Ctx, resp *http.Response) {
 		}
 	}
 }
-

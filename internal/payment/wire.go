@@ -104,4 +104,3 @@ func InitializeHandler(db *gorm.DB, addrs ServiceAddrs, kafkaBrokers []string) (
 	)
 	return nil, nil
 }
-

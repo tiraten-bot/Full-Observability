@@ -34,4 +34,3 @@ func (h *GetProductHandler) Handle(query GetProductQuery) (*domain.Product, erro
 
 	return product, nil
 }
-

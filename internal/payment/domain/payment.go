@@ -44,4 +44,3 @@ type PaymentRepository interface {
 	Update(payment *Payment) error
 	UpdateStatus(id uint, status string) error
 }
-

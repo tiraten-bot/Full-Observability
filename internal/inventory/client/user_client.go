@@ -116,4 +116,3 @@ func (c *UserServiceClient) CheckUserPermissions(ctx context.Context, userID uin
 
 	return false, user.Role, fmt.Errorf("insufficient permissions")
 }
-

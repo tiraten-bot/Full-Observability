@@ -132,4 +132,3 @@ func (c *ProductServiceClient) ListProducts(ctx context.Context, limit, offset i
 
 	return resp.Products, nil
 }
-

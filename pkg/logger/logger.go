@@ -97,4 +97,3 @@ func SetLevel(level string) {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 }
-

@@ -58,4 +58,3 @@ func (r *GormInventoryRepository) UpdateQuantity(productID uint, quantity int) e
 		Where("product_id = ?", productID).
 		Update("quantity", quantity).Error
 }
-

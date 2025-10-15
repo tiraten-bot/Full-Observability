@@ -12,14 +12,14 @@ import (
 
 // MiddlewareConfig holds configuration for middlewares
 type MiddlewareConfig struct {
-	EnableLogging    bool
-	EnableTracing    bool
-	EnableCORS       bool
-	EnableRecovery   bool
-	EnableTimeout    bool
-	TimeoutDuration  time.Duration
-	CORSOptions      cors.Options
-	UserClient       *client.UserServiceClient
+	EnableLogging   bool
+	EnableTracing   bool
+	EnableCORS      bool
+	EnableRecovery  bool
+	EnableTimeout   bool
+	TimeoutDuration time.Duration
+	CORSOptions     cors.Options
+	UserClient      *client.UserServiceClient
 }
 
 // DefaultMiddlewareConfig returns default middleware configuration

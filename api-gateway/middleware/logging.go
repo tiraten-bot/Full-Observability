@@ -72,4 +72,3 @@ func StructuredLoggingMiddleware() fiber.Handler {
 		return err
 	}
 }
-

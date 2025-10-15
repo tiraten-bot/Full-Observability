@@ -34,4 +34,3 @@ func (h *GetPaymentHandler) Handle(query GetPaymentQuery) (*domain.Payment, erro
 
 	return payment, nil
 }
-

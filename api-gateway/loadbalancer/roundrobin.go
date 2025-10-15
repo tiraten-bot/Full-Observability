@@ -98,4 +98,3 @@ func (rr *RoundRobin) GetStats() map[string]interface{} {
 		"current_index": rr.current,
 	}
 }
-

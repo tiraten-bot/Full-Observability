@@ -95,7 +95,7 @@ func TracingInterceptor(
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		
+
 		// Add gRPC status code
 		if st, ok := status.FromError(err); ok {
 			span.SetAttributes(attribute.String("rpc.grpc.status_code", st.Code().String()))
@@ -258,4 +258,3 @@ func AuthInterceptor(
 
 	return handler(ctx, req)
 }
-

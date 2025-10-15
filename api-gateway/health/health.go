@@ -102,7 +102,7 @@ func (h *HealthChecker) CheckAllServices(ctx context.Context) GatewayHealth {
 		go func(n string, s config.ServiceConfig) {
 			defer wg.Done()
 			health := h.CheckService(ctx, n, s)
-			
+
 			mu.Lock()
 			services[n] = health
 			mu.Unlock()
@@ -165,4 +165,3 @@ func (h *HealthChecker) QuickCheck() map[string]interface{} {
 		"timestamp": time.Now(),
 	}
 }
-

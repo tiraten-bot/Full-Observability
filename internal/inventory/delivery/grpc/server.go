@@ -18,16 +18,16 @@ import (
 // InventoryGRPCServer implements the InventoryService gRPC server
 type InventoryGRPCServer struct {
 	pb.UnimplementedInventoryServiceServer
-	
+
 	// Command handlers
 	createHandler         *command.CreateInventoryHandler
 	updateQuantityHandler *command.UpdateQuantityHandler
 	deleteHandler         *command.DeleteInventoryHandler
-	
+
 	// Query handlers
 	getHandler  *query.GetInventoryHandler
 	listHandler *query.ListInventoryHandler
-	
+
 	repo domain.InventoryRepository
 }
 
@@ -44,9 +44,9 @@ func NewInventoryGRPCServer(
 		createHandler:         createHandler,
 		updateQuantityHandler: updateQuantityHandler,
 		deleteHandler:         deleteHandler,
-		getHandler:           getHandler,
-		listHandler:          listHandler,
-		repo:                 repo,
+		getHandler:            getHandler,
+		listHandler:           listHandler,
+		repo:                  repo,
 	}
 }
 
@@ -323,4 +323,3 @@ func domainToProto(inv *domain.Inventory) *pb.Inventory {
 		UpdatedAt: timestamppb.New(inv.UpdatedAt),
 	}
 }
-

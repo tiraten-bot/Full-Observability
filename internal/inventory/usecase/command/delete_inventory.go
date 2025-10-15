@@ -33,4 +33,3 @@ func (h *DeleteInventoryHandler) Handle(cmd DeleteInventoryCommand) error {
 
 	return nil
 }
-

@@ -39,4 +39,3 @@ func (h *ListInventoryHandler) Handle(query ListInventoryQuery) ([]domain.Invent
 
 	return inventories, nil
 }
-

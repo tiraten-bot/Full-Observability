@@ -87,4 +87,3 @@ func (h *RegisterUserHandler) Handle(cmd RegisterUserCommand) (*domain.User, err
 
 	return user, nil
 }
-

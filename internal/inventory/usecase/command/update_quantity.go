@@ -38,4 +38,3 @@ func (h *UpdateQuantityHandler) Handle(cmd UpdateQuantityCommand) error {
 
 	return nil
 }
-

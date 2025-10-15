@@ -26,10 +26,10 @@ func LoadConfig() *GatewayConfig {
 	return &GatewayConfig{
 		Port: getEnv("GATEWAY_PORT", "8000"),
 		Services: map[string]ServiceConfig{
-			"user": loadServiceConfig("user-service", "USER_SERVICE_URL", "http://localhost:8080"),
-			"product": loadServiceConfig("product-service", "PRODUCT_SERVICE_URL", "http://localhost:8081"),
+			"user":      loadServiceConfig("user-service", "USER_SERVICE_URL", "http://localhost:8080"),
+			"product":   loadServiceConfig("product-service", "PRODUCT_SERVICE_URL", "http://localhost:8081"),
 			"inventory": loadServiceConfig("inventory-service", "INVENTORY_SERVICE_URL", "http://localhost:8082"),
-			"payment": loadServiceConfig("payment-service", "PAYMENT_SERVICE_URL", "http://localhost:8083"),
+			"payment":   loadServiceConfig("payment-service", "PAYMENT_SERVICE_URL", "http://localhost:8083"),
 		},
 	}
 }
@@ -37,7 +37,7 @@ func LoadConfig() *GatewayConfig {
 // loadServiceConfig loads configuration for a single service (supports multiple instances)
 func loadServiceConfig(name, envKey, defaultURL string) ServiceConfig {
 	urlsStr := getEnv(envKey, defaultURL)
-	
+
 	// Split by comma for multiple instances
 	urls := strings.Split(urlsStr, ",")
 	for i, url := range urls {
@@ -59,4 +59,3 @@ func getEnv(key, defaultValue string) string {
 	}
 	return defaultValue
 }
-

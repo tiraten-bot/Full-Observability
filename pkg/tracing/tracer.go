@@ -74,4 +74,3 @@ func Shutdown(ctx context.Context, tp trace.TracerProvider) error {
 	}
 	return nil
 }
-

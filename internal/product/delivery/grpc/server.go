@@ -220,11 +220,11 @@ func (s *ProductServer) GetStats(ctx context.Context, req *pb.GetStatsRequest) (
 	}
 
 	return &pb.StatsResponse{
-		TotalProducts:        stats.TotalProducts,
-		ActiveProducts:       stats.ActiveProducts,
-		OutOfStock:           stats.OutOfStock,
-		LowStock:             stats.LowStock,
-		ProductsByCategory:   stats.ProductsByCategory,
+		TotalProducts:      stats.TotalProducts,
+		ActiveProducts:     stats.ActiveProducts,
+		OutOfStock:         stats.OutOfStock,
+		LowStock:           stats.LowStock,
+		ProductsByCategory: stats.ProductsByCategory,
 	}, nil
 }
 
@@ -243,4 +243,3 @@ func domainProductToProto(product *domain.Product) *pb.Product {
 		UpdatedAt:   timestamppb.New(product.UpdatedAt),
 	}
 }
-

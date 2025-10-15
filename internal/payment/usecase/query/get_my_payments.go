@@ -44,4 +44,3 @@ func (h *GetMyPaymentsHandler) Handle(query GetMyPaymentsQuery) ([]domain.Paymen
 
 	return payments, nil
 }
-

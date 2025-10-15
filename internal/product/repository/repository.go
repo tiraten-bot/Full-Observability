@@ -104,4 +104,3 @@ func (r *GormProductRepository) Count() (int64, error) {
 func (r *GormProductRepository) UpdateStock(id uint, stock int) error {
 	return r.db.Model(&domain.Product{}).Where("id = ?", id).Update("stock", stock).Error
 }
-

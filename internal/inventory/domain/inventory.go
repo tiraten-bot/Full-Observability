@@ -32,4 +32,3 @@ type InventoryRepository interface {
 	Delete(id uint) error
 	UpdateQuantity(productID uint, quantity int) error
 }
-

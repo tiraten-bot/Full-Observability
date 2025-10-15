@@ -34,4 +34,3 @@ func (h *GetInventoryHandler) Handle(query GetInventoryQuery) (*domain.Inventory
 
 	return inventory, nil
 }
-

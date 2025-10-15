@@ -51,4 +51,3 @@ func (h *GetStatsHandler) Handle(query GetStatsQuery) (*UserStats, error) {
 		ActiveUsers: totalUsers, // TODO: Add active users query
 	}, nil
 }
-

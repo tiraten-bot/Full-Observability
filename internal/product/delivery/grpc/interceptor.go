@@ -213,10 +213,10 @@ func AuthInterceptor(
 ) (interface{}, error) {
 	// Public methods that don't require authentication
 	publicMethods := map[string]bool{
-		"/product.v1.ProductService/GetProduct":         true,
-		"/product.v1.ProductService/ListProducts":       true,
-		"/product.v1.ProductService/CheckAvailability":  true,
-		"/product.v1.ProductService/GetStats":           true,
+		"/product.v1.ProductService/GetProduct":        true,
+		"/product.v1.ProductService/ListProducts":      true,
+		"/product.v1.ProductService/CheckAvailability": true,
+		"/product.v1.ProductService/GetStats":          true,
 	}
 
 	if publicMethods[info.FullMethod] {
@@ -270,4 +270,3 @@ func AuthInterceptor(
 
 	return handler(ctx, req)
 }
-

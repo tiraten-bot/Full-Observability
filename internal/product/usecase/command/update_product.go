@@ -80,4 +80,3 @@ func (h *UpdateProductHandler) Handle(cmd UpdateProductCommand) (*domain.Product
 
 	return product, nil
 }
-

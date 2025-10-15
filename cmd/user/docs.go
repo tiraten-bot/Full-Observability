@@ -31,4 +31,3 @@ package main
 
 // @tag.name Health
 // @tag.description Health check endpoints
-

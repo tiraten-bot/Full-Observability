@@ -49,4 +49,3 @@ func (h *CreateInventoryHandler) Handle(cmd CreateInventoryCommand) (*domain.Inv
 
 	return inventory, nil
 }
-

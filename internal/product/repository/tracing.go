@@ -225,4 +225,3 @@ func addDBErrorToSpan(span trace.Span, err error) {
 		span.SetStatus(codes.Error, fmt.Sprintf("database error: %v", err))
 	}
 }
-

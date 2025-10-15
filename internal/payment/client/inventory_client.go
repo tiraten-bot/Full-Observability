@@ -162,4 +162,3 @@ func (c *InventoryServiceClient) ListInventory(ctx context.Context, limit, offse
 
 	return resp.Inventories, nil
 }
-

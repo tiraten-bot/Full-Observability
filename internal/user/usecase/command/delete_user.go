@@ -34,4 +34,3 @@ func (h *DeleteUserHandler) Handle(cmd DeleteUserCommand) error {
 
 	return nil
 }
-

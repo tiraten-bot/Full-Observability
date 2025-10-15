@@ -65,14 +65,14 @@ func (r *GormUserRepository) FindByEmail(email string) (*domain.User, error) {
 func (r *GormUserRepository) FindAll(limit, offset int) ([]domain.User, error) {
 	var users []domain.User
 	query := r.db.Order("created_at DESC")
-	
+
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
 	if offset > 0 {
 		query = query.Offset(offset)
 	}
-	
+
 	if err := query.Find(&users).Error; err != nil {
 		return nil, fmt.Errorf("failed to find users: %w", err)
 	}
@@ -83,14 +83,14 @@ func (r *GormUserRepository) FindAll(limit, offset int) ([]domain.User, error) {
 func (r *GormUserRepository) FindByRole(role string, limit, offset int) ([]domain.User, error) {
 	var users []domain.User
 	query := r.db.Where("role = ?", role).Order("created_at DESC")
-	
+
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
 	if offset > 0 {
 		query = query.Offset(offset)
 	}
-	
+
 	if err := query.Find(&users).Error; err != nil {
 		return nil, fmt.Errorf("failed to find users by role: %w", err)
 	}
@@ -139,4 +139,3 @@ func (r *GormUserRepository) CountByRole(role string) (int64, error) {
 func (r *GormUserRepository) AutoMigrate() error {
 	return r.db.AutoMigrate(&domain.User{})
 }
-

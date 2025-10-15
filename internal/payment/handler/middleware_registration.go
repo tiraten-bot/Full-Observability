@@ -47,4 +47,3 @@ func (config MiddlewareConfig) GetAuthMiddleware() func(http.HandlerFunc) http.H
 func (config MiddlewareConfig) GetAdminMiddleware() func(http.HandlerFunc) http.HandlerFunc {
 	return AdminMiddleware(config.UserClient)
 }
-

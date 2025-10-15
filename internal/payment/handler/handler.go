@@ -22,15 +22,15 @@ type PaymentHandler struct {
 	updateStatusHandler *command.UpdateStatusHandler
 
 	// Query handlers
-	getHandler       *query.GetPaymentHandler
-	listHandler      *query.ListPaymentsHandler
-	getMyHandler     *query.GetMyPaymentsHandler
+	getHandler   *query.GetPaymentHandler
+	listHandler  *query.ListPaymentsHandler
+	getMyHandler *query.GetMyPaymentsHandler
 
-	repo             domain.PaymentRepository
-	userClient       *client.UserServiceClient
-	productClient    *client.ProductServiceClient
-	inventoryClient  *client.InventoryServiceClient
-	kafkaPublisher   *kafka.Publisher
+	repo            domain.PaymentRepository
+	userClient      *client.UserServiceClient
+	productClient   *client.ProductServiceClient
+	inventoryClient *client.InventoryServiceClient
+	kafkaPublisher  *kafka.Publisher
 }
 
 // NewPaymentHandler creates a new payment handler (manual DI)
@@ -144,9 +144,9 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 			Success: false,
 			Error:   message,
 			Data: map[string]interface{}{
-				"product_id":     req.ProductID,
-				"requested":      req.Quantity,
-				"available":      currentStock,
+				"product_id": req.ProductID,
+				"requested":  req.Quantity,
+				"available":  currentStock,
 			},
 		})
 		return
@@ -405,4 +405,3 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(payload)
 }
-

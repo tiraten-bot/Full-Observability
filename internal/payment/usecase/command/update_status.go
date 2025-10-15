@@ -46,4 +46,3 @@ func (h *UpdateStatusHandler) Handle(cmd UpdateStatusCommand) error {
 
 	return nil
 }
-

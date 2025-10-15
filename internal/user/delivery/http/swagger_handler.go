@@ -188,4 +188,3 @@ func (h *UserHandler) GetStatsDoc() {}
 // @Failure 503 {object} object{status=string,error=string}
 // @Router /health [get]
 func (h *UserHandler) HealthCheckDoc() {}
-

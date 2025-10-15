@@ -15,4 +15,3 @@ func TracingMiddleware(operationName string, next http.Handler) http.Handler {
 func TracingMiddlewareFunc(operationName string, next http.HandlerFunc) http.Handler {
 	return otelhttp.NewHandler(next, operationName)
 }
-

@@ -90,4 +90,3 @@ func (h *GetStatsHandler) Handle(query GetStatsQuery) (*ProductStats, error) {
 
 	return stats, nil
 }
-

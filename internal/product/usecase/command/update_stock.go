@@ -43,4 +43,3 @@ func (h *UpdateStockHandler) Handle(cmd UpdateStockCommand) error {
 
 	return nil
 }
-

@@ -16,7 +16,7 @@ import (
 // UserServer implements the gRPC UserService
 type UserServer struct {
 	pb.UnimplementedUserServiceServer
-	
+
 	// Command handlers
 	registerHandler     *command.RegisterUserHandler
 	loginHandler        *command.LoginUserHandler
@@ -84,7 +84,7 @@ func (s *UserServer) Register(ctx context.Context, req *pb.RegisterRequest) (*pb
 
 	user, err := s.registerHandler.Handle(cmd)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "registration failed: %v", err)
 	}
 
 	return &pb.RegisterResponse{
@@ -101,7 +101,7 @@ func (s *UserServer) Login(ctx context.Context, req *pb.LoginRequest) (*pb.Login
 
 	response, err := s.loginHandler.Handle(cmd)
 	if err != nil {
-		return nil, status.Errorf(codes.Unauthenticated, err.Error())
+		return nil, status.Errorf(codes.Unauthenticated, "login failed: %v", err)
 	}
 
 	return &pb.LoginResponse{
@@ -116,7 +116,7 @@ func (s *UserServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.U
 
 	user, err := s.getUserHandler.Handle(q)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, err.Error())
+		return nil, status.Errorf(codes.NotFound, "user not found: %v", err)
 	}
 
 	return &pb.UserResponse{
@@ -135,7 +135,7 @@ func (s *UserServer) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) 
 
 	user, err := s.updateHandler.Handle(cmd)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "update failed: %v", err)
 	}
 
 	return &pb.UserResponse{
@@ -148,7 +148,7 @@ func (s *UserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) 
 	cmd := command.DeleteUserCommand{ID: uint(req.Id)}
 
 	if err := s.deleteHandler.Handle(cmd); err != nil {
-		return nil, status.Errorf(codes.NotFound, err.Error())
+		return nil, status.Errorf(codes.NotFound, "delete failed: %v", err)
 	}
 
 	return &pb.DeleteUserResponse{
@@ -166,7 +166,7 @@ func (s *UserServer) ListUsers(ctx context.Context, req *pb.ListUsersRequest) (*
 
 	users, err := s.listHandler.Handle(q)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "list users failed: %v", err)
 	}
 
 	protoUsers := make([]*pb.User, len(users))
@@ -189,7 +189,7 @@ func (s *UserServer) ChangeRole(ctx context.Context, req *pb.ChangeRoleRequest) 
 
 	user, err := s.changeRoleHandler.Handle(cmd)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "change role failed: %v", err)
 	}
 
 	return &pb.UserResponse{
@@ -206,7 +206,7 @@ func (s *UserServer) ToggleActive(ctx context.Context, req *pb.ToggleActiveReque
 
 	user, err := s.toggleActiveHandler.Handle(cmd)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "toggle active failed: %v", err)
 	}
 
 	return &pb.UserResponse{
@@ -220,7 +220,7 @@ func (s *UserServer) GetStats(ctx context.Context, req *pb.GetStatsRequest) (*pb
 
 	stats, err := s.statsHandler.Handle(q)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "get stats failed: %v", err)
 	}
 
 	return &pb.StatsResponse{
@@ -244,4 +244,3 @@ func domainUserToProto(user *domain.User) *pb.User {
 		UpdatedAt: timestamppb.New(user.UpdatedAt),
 	}
 }
-

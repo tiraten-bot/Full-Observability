@@ -18,9 +18,9 @@ import (
 // InventoryHandler handles HTTP requests for inventory using CQRS pattern
 type InventoryHandler struct {
 	// Command handlers
-	createHandler        *command.CreateInventoryHandler
+	createHandler         *command.CreateInventoryHandler
 	updateQuantityHandler *command.UpdateQuantityHandler
-	deleteHandler        *command.DeleteInventoryHandler
+	deleteHandler         *command.DeleteInventoryHandler
 
 	// Query handlers
 	getHandler  *query.GetInventoryHandler
@@ -33,13 +33,13 @@ type InventoryHandler struct {
 // NewInventoryHandler creates a new inventory handler (manual DI)
 func NewInventoryHandler(repo domain.InventoryRepository, userClient *client.UserServiceClient) *InventoryHandler {
 	return &InventoryHandler{
-		createHandler:        command.NewCreateInventoryHandler(repo),
+		createHandler:         command.NewCreateInventoryHandler(repo),
 		updateQuantityHandler: command.NewUpdateQuantityHandler(repo),
-		deleteHandler:        command.NewDeleteInventoryHandler(repo),
-		getHandler:          query.NewGetInventoryHandler(repo),
-		listHandler:         query.NewListInventoryHandler(repo),
-		repo:                repo,
-		userClient:          userClient,
+		deleteHandler:         command.NewDeleteInventoryHandler(repo),
+		getHandler:            query.NewGetInventoryHandler(repo),
+		listHandler:           query.NewListInventoryHandler(repo),
+		repo:                  repo,
+		userClient:            userClient,
 	}
 }
 
@@ -54,13 +54,13 @@ func NewInventoryHandlerWithDI(
 	userClient *client.UserServiceClient,
 ) *InventoryHandler {
 	return &InventoryHandler{
-		createHandler:        createHandler,
+		createHandler:         createHandler,
 		updateQuantityHandler: updateQuantityHandler,
-		deleteHandler:        deleteHandler,
-		getHandler:          getHandler,
-		listHandler:         listHandler,
-		repo:                repo,
-		userClient:          userClient,
+		deleteHandler:         deleteHandler,
+		getHandler:            getHandler,
+		listHandler:           listHandler,
+		repo:                  repo,
+		userClient:            userClient,
 	}
 }
 
@@ -271,12 +271,12 @@ func (h *InventoryHandler) CheckAvailability(w http.ResponseWriter, r *http.Requ
 	respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
-			"product_id":  productID,
-			"available":   available,
-			"quantity":    inventory.Quantity,
-			"requested":   requestedQty,
-			"location":    inventory.Location,
-			"message":     message,
+			"product_id": productID,
+			"available":  available,
+			"quantity":   inventory.Quantity,
+			"requested":  requestedQty,
+			"location":   inventory.Location,
+			"message":    message,
 		},
 	})
 }
@@ -325,4 +325,3 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(payload)
 }
-

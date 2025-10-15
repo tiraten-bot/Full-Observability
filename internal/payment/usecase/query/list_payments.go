@@ -39,4 +39,3 @@ func (h *ListPaymentsHandler) Handle(query ListPaymentsQuery) ([]domain.Payment,
 
 	return payments, nil
 }
-

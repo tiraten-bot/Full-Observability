@@ -47,7 +47,7 @@ func NewCircuitBreaker(name string, maxFailures int, timeout time.Duration) *Cir
 // Call executes the function with circuit breaker protection
 func (cb *CircuitBreaker) Call(fn func() error) error {
 	cb.mu.Lock()
-	
+
 	// Check if we should transition to half-open
 	if cb.state == StateOpen {
 		if time.Since(cb.lastStateChange) > cb.timeout {
@@ -140,13 +140,13 @@ func (cb *CircuitBreaker) GetStats() map[string]interface{} {
 	defer cb.mu.RUnlock()
 
 	return map[string]interface{}{
-		"name":               cb.name,
-		"state":              cb.state,
-		"failures":           cb.failures,
-		"max_failures":       cb.maxFailures,
-		"last_failure_time":  cb.lastFailureTime,
-		"last_state_change":  cb.lastStateChange,
-		"time_since_change":  time.Since(cb.lastStateChange).Seconds(),
+		"name":              cb.name,
+		"state":             cb.state,
+		"failures":          cb.failures,
+		"max_failures":      cb.maxFailures,
+		"last_failure_time": cb.lastFailureTime,
+		"last_state_change": cb.lastStateChange,
+		"time_since_change": time.Since(cb.lastStateChange).Seconds(),
 	}
 }
 
@@ -174,7 +174,7 @@ func (m *CircuitBreakerManager) GetOrCreate(serviceName string) *CircuitBreaker 
 
 	cb := NewCircuitBreaker(serviceName, 5, 30*time.Second)
 	m.breakers[serviceName] = cb
-	
+
 	logger.Logger.Info().
 		Str("service", serviceName).
 		Msg("Circuit breaker created")
@@ -214,9 +214,9 @@ func CircuitBreakerMiddleware(manager *CircuitBreakerManager) fiber.Handler {
 				Msg("Circuit breaker is open - request blocked")
 
 			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-				"error":   "Service temporarily unavailable",
-				"service": serviceName,
-				"message": "Circuit breaker is open. Service is experiencing issues.",
+				"error":       "Service temporarily unavailable",
+				"service":     serviceName,
+				"message":     "Circuit breaker is open. Service is experiencing issues.",
 				"retry_after": 30,
 			})
 		}
@@ -225,12 +225,12 @@ func CircuitBreakerMiddleware(manager *CircuitBreakerManager) fiber.Handler {
 		var responseErr error
 		err := cb.Call(func() error {
 			responseErr = c.Next()
-			
+
 			// Check if downstream service failed
 			if c.Response().StatusCode() >= 500 {
 				return fmt.Errorf("downstream service error: %d", c.Response().StatusCode())
 			}
-			
+
 			return nil
 		})
 
@@ -267,4 +267,3 @@ func determineServiceFromPath(path string) string {
 		return ""
 	}
 }
-

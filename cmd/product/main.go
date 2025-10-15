@@ -170,10 +170,10 @@ func startGRPCServer(repo *repository.GormProductRepository, port string) {
 	// Create gRPC server with interceptors
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
-			grpcDelivery.TracingInterceptor,  // Add tracing first
-			grpcDelivery.MetricsInterceptor,  // Collect metrics
-			grpcDelivery.LoggingInterceptor,  // Log requests
-			grpcDelivery.AuthInterceptor,     // Verify auth
+			grpcDelivery.TracingInterceptor, // Add tracing first
+			grpcDelivery.MetricsInterceptor, // Collect metrics
+			grpcDelivery.LoggingInterceptor, // Log requests
+			grpcDelivery.AuthInterceptor,    // Verify auth
 		),
 	)
 
@@ -315,4 +315,3 @@ func registerDBPoolMetrics(sqlDB *sql.DB) {
 
 	logger.Logger.Info().Msg("Database pool metrics registered")
 }
-

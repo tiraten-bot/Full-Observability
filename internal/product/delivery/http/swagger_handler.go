@@ -118,4 +118,3 @@ func (h *ProductHandler) GetStatsDoc() {}
 // @Failure 503 {object} object{success=bool,error=string}
 // @Router /health [get]
 func (h *ProductHandler) HealthCheckDoc() {}
-

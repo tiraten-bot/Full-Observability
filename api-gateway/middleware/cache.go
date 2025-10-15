@@ -14,15 +14,15 @@ import (
 
 // CacheConfig holds cache configuration
 type CacheConfig struct {
-	DefaultTTL     time.Duration // Default cache TTL
-	CacheableMethods []string    // HTTP methods to cache
-	CacheableStatus  []int       // HTTP status codes to cache
+	DefaultTTL       time.Duration // Default cache TTL
+	CacheableMethods []string      // HTTP methods to cache
+	CacheableStatus  []int         // HTTP status codes to cache
 }
 
 // DefaultCacheConfig returns default cache configuration
 func DefaultCacheConfig() CacheConfig {
 	return CacheConfig{
-		DefaultTTL: 5 * time.Minute,
+		DefaultTTL:       5 * time.Minute,
 		CacheableMethods: []string{"GET", "HEAD"},
 		CacheableStatus:  []int{200, 203, 204, 206, 300, 301, 404, 405, 410, 414, 501},
 	}
@@ -72,7 +72,7 @@ func CacheMiddleware(redisClient *redis.Client, config CacheConfig) fiber.Handle
 		statusCode := c.Response().StatusCode()
 		if isStatusCacheable(statusCode, config.CacheableStatus) {
 			responseBody := c.Response().Body()
-			
+
 			// Cache the response
 			ttl := config.DefaultTTL
 			if err := redisClient.Set(ctx, cacheKey, responseBody, ttl).Err(); err != nil {
@@ -134,15 +134,15 @@ func isStatusCacheable(status int, cacheableStatus []int) bool {
 // InvalidateCache invalidates cache for a specific pattern
 func InvalidateCache(redisClient *redis.Client, pattern string) error {
 	ctx := context.Background()
-	
+
 	// Find all keys matching pattern
 	iter := redisClient.Scan(ctx, 0, pattern, 0).Iterator()
-	
+
 	var keys []string
 	for iter.Next(ctx) {
 		keys = append(keys, iter.Val())
 	}
-	
+
 	if err := iter.Err(); err != nil {
 		return err
 	}
@@ -152,7 +152,7 @@ func InvalidateCache(redisClient *redis.Client, pattern string) error {
 		if err := redisClient.Del(ctx, keys...).Err(); err != nil {
 			return err
 		}
-		
+
 		logger.Logger.Info().
 			Int("count", len(keys)).
 			Str("pattern", pattern).
@@ -161,4 +161,3 @@ func InvalidateCache(redisClient *redis.Client, pattern string) error {
 
 	return nil
 }
-

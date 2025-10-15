@@ -42,11 +42,10 @@ type ProductRepository interface {
 	Delete(id uint) error
 	Count() (int64, error)
 	UpdateStock(id uint, stock int) error
-	
+
 	// User favorites
 	AddFavorite(userID, productID uint) error
 	RemoveFavorite(userID, productID uint) error
 	GetUserFavorites(userID uint) ([]uint, error)
 	IsFavorite(userID, productID uint) (bool, error)
 }
-

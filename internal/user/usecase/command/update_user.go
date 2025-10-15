@@ -47,7 +47,7 @@ func (h *UpdateUserHandler) Handle(cmd UpdateUserCommand) (*domain.User, error) 
 		}
 		user.Email = cmd.Email
 	}
-	
+
 	if cmd.FullName != "" {
 		user.FullName = cmd.FullName
 	}

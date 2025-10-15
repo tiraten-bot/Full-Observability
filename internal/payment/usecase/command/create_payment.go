@@ -59,4 +59,3 @@ func (h *CreatePaymentHandler) Handle(cmd CreatePaymentCommand) (*domain.Payment
 
 	return payment, nil
 }
-

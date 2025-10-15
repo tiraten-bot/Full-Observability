@@ -34,4 +34,3 @@ func (h *GetUserHandler) Handle(query GetUserQuery) (*domain.User, error) {
 
 	return user, nil
 }
-

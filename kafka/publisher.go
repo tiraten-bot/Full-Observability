@@ -153,4 +153,3 @@ func (p *Publisher) Close() error {
 	}
 	return nil
 }
-
