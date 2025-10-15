@@ -1,0 +1,142 @@
+# ==============================================================================
+# ANSIBLE PLAYBOOK - HEALTH CHECK
+# ==============================================================================
+# Purpose: Comprehensive health check for all services
+# Usage: ansible-playbook playbooks/health-check.yml
+# ==============================================================================
+
+---
+- name: Health Check Full Observability Stack
+  hosts: localhost
+  gather_facts: yes
+  
+  vars:
+    namespace: observability
+    failed_checks: []
+  
+  tasks:
+    # ==========================================================================
+    # INFRASTRUCTURE HEALTH
+    # ==========================================================================
+    - name: Check PostgreSQL health
+      kubernetes.core.k8s_exec:
+        namespace: "{{ namespace }}"
+        pod: "{{ lookup('kubernetes.core.k8s', kind='Pod', namespace=namespace, label_selector='app=postgres') | first | json_query('metadata.name') }}"
+        command: pg_isready -U postgres
+      register: postgres_health
+      failed_when: false
+    
+    - name: Check Redis health
+      kubernetes.core.k8s_exec:
+        namespace: "{{ namespace }}"
+        pod: "{{ lookup('kubernetes.core.k8s', kind='Pod', namespace=namespace, label_selector='app=redis') | first | json_query('metadata.name') }}"
+        command: redis-cli ping
+      register: redis_health
+      failed_when: false
+    
+    - name: Check Kafka health
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app=kafka
+      register: kafka_pods
+    
+    # ==========================================================================
+    # MICROSERVICES HEALTH
+    # ==========================================================================
+    - name: Check microservices health endpoints
+      uri:
+        url: "http://{{ item.spec.clusterIP }}:{{ item.spec.ports[0].port }}/health"
+        method: GET
+        status_code: 200
+        timeout: 5
+      loop: "{{ all_services.resources }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+      register: service_health
+      failed_when: false
+      vars:
+        all_services: "{{ lookup('kubernetes.core.k8s', kind='Service', namespace=namespace) }}"
+    
+    # ==========================================================================
+    # OBSERVABILITY STACK HEALTH
+    # ==========================================================================
+    - name: Check Prometheus
+      uri:
+        url: "http://localhost:9090/-/healthy"
+        method: GET
+        status_code: 200
+      delegate_to: localhost
+      register: prometheus_health
+      failed_when: false
+    
+    - name: Check Grafana
+      uri:
+        url: "http://localhost:3000/api/health"
+        method: GET
+        status_code: 200
+      delegate_to: localhost
+      register: grafana_health
+      failed_when: false
+    
+    - name: Check Jaeger
+      uri:
+        url: "http://localhost:16686/"
+        method: GET
+        status_code: 200
+      delegate_to: localhost
+      register: jaeger_health
+      failed_when: false
+    
+    # ==========================================================================
+    # ISTIO HEALTH
+    # ==========================================================================
+    - name: Check Istio installation
+      command: kubectl get pods -n istio-system
+      register: istio_pods
+      changed_when: false
+      failed_when: false
+    
+    - name: Verify Istio sidecar injection
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+      register: all_pods
+    
+    - name: Count pods with sidecars
+      set_fact:
+        pods_with_sidecar: "{{ all_pods.resources | selectattr('spec.containers', 'defined') | selectattr('spec.containers', 'search', 'istio-proxy') | list | length }}"
+        total_pods: "{{ all_pods.resources | length }}"
+    
+    # ==========================================================================
+    # HEALTH CHECK SUMMARY
+    # ==========================================================================
+    - name: Health Check Summary
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════════════════════════╗
+          ║              HEALTH CHECK REPORT                              ║
+          ╚═══════════════════════════════════════════════════════════════╝
+          
+          Infrastructure:
+            PostgreSQL: {{ 'OK ✅' if postgres_health.rc == 0 else 'FAILED ❌' }}
+            Redis: {{ 'OK ✅' if redis_health.rc == 0 else 'FAILED ❌' }}
+            Kafka: {{ 'OK ✅' if kafka_pods.resources | length > 0 else 'FAILED ❌' }}
+          
+          Microservices:
+            User Service: {{ 'OK ✅' if (service_health.results | selectattr('item.metadata.name', 'equalto', 'user-service') | first).status == 200 else 'FAILED ❌' }}
+            Product Service: {{ 'OK ✅' if (service_health.results | selectattr('item.metadata.name', 'equalto', 'product-service') | first).status == 200 else 'FAILED ❌' }}
+            Payment Service: {{ 'OK ✅' if (service_health.results | selectattr('item.metadata.name', 'equalto', 'payment-service') | first).status == 200 else 'FAILED ❌' }}
+          
+          Observability:
+            Prometheus: {{ 'OK ✅' if prometheus_health.status == 200 else 'FAILED ❌' }}
+            Grafana: {{ 'OK ✅' if grafana_health.status == 200 else 'FAILED ❌' }}
+            Jaeger: {{ 'OK ✅' if jaeger_health.status == 200 else 'FAILED ❌' }}
+          
+          Istio Service Mesh:
+            Istio System: {{ 'OK ✅' if istio_pods.rc == 0 else 'NOT INSTALLED ⚠️' }}
+            Sidecar Injection: {{ pods_with_sidecar }}/{{ total_pods }} pods
+          
+          Overall Status: {{ 'HEALTHY ✅' if postgres_health.rc == 0 and redis_health.rc == 0 else 'ISSUES DETECTED ⚠️' }}
+
