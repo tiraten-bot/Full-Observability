@@ -14,7 +14,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/prometheus/client_golang v1.18.0
 	github.com/redis/go-redis/v9 v9.14.0
-	github.com/rs/cors v1.10.1
+	github.com/rs/cors v1.11.1
 	github.com/rs/zerolog v1.31.0
 	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/swaggo/swag v1.16.6
