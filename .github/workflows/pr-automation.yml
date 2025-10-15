@@ -107,7 +107,7 @@ jobs:
           level: warning
       
       - name: Comment PR with checklist
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         if: github.event.action == 'opened'
         with:
           script: |
