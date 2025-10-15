@@ -1,0 +1,86 @@
+# ==============================================================================
+# DATABASE ROLE - MAIN TASKS
+# ==============================================================================
+# Purpose: Initialize and configure databases
+# ==============================================================================
+
+---
+- name: Wait for PostgreSQL pod to be ready
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: "{{ k8s_namespace }}"
+    label_selectors:
+      - app=postgres
+  register: postgres_pods
+  until: postgres_pods.resources | length > 0 and postgres_pods.resources[0].status.phase == "Running"
+  retries: 30
+  delay: 10
+
+- name: Get PostgreSQL pod name
+  set_fact:
+    postgres_pod: "{{ postgres_pods.resources[0].metadata.name }}"
+
+- name: Check if databases exist
+  kubernetes.core.k8s_exec:
+    namespace: "{{ k8s_namespace }}"
+    pod: "{{ postgres_pod }}"
+    command: psql -U postgres -lqt
+  register: db_list
+  changed_when: false
+
+- name: Create application databases
+  kubernetes.core.k8s_exec:
+    namespace: "{{ k8s_namespace }}"
+    pod: "{{ postgres_pod }}"
+    command: "psql -U postgres -c 'CREATE DATABASE {{ item }};'"
+  loop:
+    - userdb
+    - productdb
+    - inventorydb
+    - paymentdb
+  when: item not in db_list.stdout
+  register: db_create
+  failed_when: 
+    - db_create.rc != 0
+    - "'already exists' not in db_create.stderr"
+
+- name: Grant privileges
+  kubernetes.core.k8s_exec:
+    namespace: "{{ k8s_namespace }}"
+    pod: "{{ postgres_pod }}"
+    command: "psql -U postgres -c 'GRANT ALL PRIVILEGES ON DATABASE {{ item }} TO postgres;'"
+  loop:
+    - userdb
+    - productdb
+    - inventorydb
+    - paymentdb
+
+- name: Enable PostgreSQL extensions
+  kubernetes.core.k8s_exec:
+    namespace: "{{ k8s_namespace }}"
+    pod: "{{ postgres_pod }}"
+    command: "psql -U postgres -d {{ item }} -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";'"
+  loop:
+    - userdb
+    - productdb
+    - inventorydb
+    - paymentdb
+
+- name: Verify database connections
+  kubernetes.core.k8s_exec:
+    namespace: "{{ k8s_namespace }}"
+    pod: "{{ postgres_pod }}"
+    command: "psql -U postgres -d {{ item }} -c 'SELECT 1;'"
+  loop:
+    - userdb
+    - productdb
+    - inventorydb
+    - paymentdb
+  register: db_test
+  failed_when: db_test.rc != 0
+  changed_when: false
+
+- name: Database initialization complete
+  debug:
+    msg: "All databases initialized successfully"
+
