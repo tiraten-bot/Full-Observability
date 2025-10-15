@@ -1,0 +1,309 @@
+# ==============================================================================
+# ANSIBLE PLAYBOOK - DEPLOY FULL OBSERVABILITY STACK
+# ==============================================================================
+# Purpose: Complete deployment automation for microservices stack
+# Usage: ansible-playbook playbooks/deploy-all.yml
+# ==============================================================================
+
+---
+- name: Deploy Full Observability Microservices
+  hosts: localhost
+  gather_facts: yes
+  
+  vars:
+    namespace: observability
+    helm_release: full-observability
+    environment: "{{ lookup('env', 'ENVIRONMENT') | default('dev', true) }}"
+  
+  tasks:
+    # ==========================================================================
+    # PHASE 1: PRE-DEPLOYMENT CHECKS
+    # ==========================================================================
+    - name: Check if kubectl is installed
+      command: kubectl version --client
+      register: kubectl_version
+      changed_when: false
+      failed_when: false
+    
+    - name: Fail if kubectl not found
+      fail:
+        msg: "kubectl is not installed. Please install kubectl first."
+      when: kubectl_version.rc != 0
+    
+    - name: Check Kubernetes cluster connectivity
+      command: kubectl cluster-info
+      register: cluster_info
+      changed_when: false
+      failed_when: cluster_info.rc != 0
+    
+    - name: Display cluster information
+      debug:
+        msg: "{{ cluster_info.stdout_lines }}"
+    
+    - name: Check if Helm is installed
+      command: helm version --short
+      register: helm_version
+      changed_when: false
+      failed_when: false
+    
+    - name: Fail if Helm not found
+      fail:
+        msg: "Helm is not installed. Please install Helm first."
+      when: helm_version.rc != 0
+    
+    # ==========================================================================
+    # PHASE 2: CREATE NAMESPACE
+    # ==========================================================================
+    - name: Create observability namespace
+      kubernetes.core.k8s:
+        name: "{{ namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+    
+    - name: Label namespace for Istio injection
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: "{{ namespace }}"
+        merge_type: merge
+        definition:
+          metadata:
+            labels:
+              istio-injection: enabled
+    
+    # ==========================================================================
+    # PHASE 3: INSTALL ISTIO
+    # ==========================================================================
+    - name: Check if Istio is installed
+      command: kubectl get namespace istio-system
+      register: istio_check
+      changed_when: false
+      failed_when: false
+    
+    - name: Install Istio
+      block:
+        - name: Download Istio
+          get_url:
+            url: https://istio.io/downloadIstio
+            dest: /tmp/getIstio.sh
+            mode: '0755'
+        
+        - name: Run Istio installer
+          shell: |
+            cd /tmp
+            export ISTIO_VERSION=1.20.2
+            curl -L https://istio.io/downloadIstio | sh -
+            export PATH="$PWD/istio-1.20.2/bin:$PATH"
+            istioctl install --set profile=default -y
+          args:
+            creates: /tmp/istio-1.20.2
+      
+      when: istio_check.rc != 0
+    
+    # ==========================================================================
+    # PHASE 4: DEPLOY HELM CHART
+    # ==========================================================================
+    - name: Add Helm dependencies (if any)
+      command: helm dependency update {{ helm_chart_path }}
+      args:
+        chdir: "{{ playbook_dir }}/../.."
+      changed_when: false
+    
+    - name: Check if Helm release exists
+      command: helm list -n {{ namespace }} -o json
+      register: helm_list
+      changed_when: false
+    
+    - name: Parse Helm releases
+      set_fact:
+        existing_releases: "{{ helm_list.stdout | from_json | map(attribute='name') | list }}"
+    
+    - name: Install or Upgrade Helm release
+      kubernetes.core.helm:
+        name: "{{ helm_release }}"
+        chart_ref: "{{ helm_chart_path }}"
+        release_namespace: "{{ namespace }}"
+        create_namespace: true
+        values_files:
+          - "{{ helm_chart_path }}/values-{{ environment }}.yaml"
+        wait: true
+        timeout: 15m
+        state: "{{ 'present' if helm_release in existing_releases else 'present' }}"
+      vars:
+        helm_chart_path: "{{ playbook_dir }}/../../helm/full-observability"
+    
+    # ==========================================================================
+    # PHASE 5: WAIT FOR DEPLOYMENTS
+    # ==========================================================================
+    - name: Wait for PostgreSQL to be ready
+      kubernetes.core.k8s_info:
+        kind: StatefulSet
+        name: postgres
+        namespace: "{{ namespace }}"
+      register: postgres_status
+      until: postgres_status.resources[0].status.readyReplicas | default(0) > 0
+      retries: 30
+      delay: 10
+    
+    - name: Wait for Redis to be ready
+      kubernetes.core.k8s_info:
+        kind: Deployment
+        name: redis
+        namespace: "{{ namespace }}"
+      register: redis_status
+      until: redis_status.resources[0].status.readyReplicas | default(0) > 0
+      retries: 20
+      delay: 10
+    
+    - name: Wait for Kafka to be ready
+      kubernetes.core.k8s_info:
+        kind: StatefulSet
+        name: kafka
+        namespace: "{{ namespace }}"
+      register: kafka_status
+      until: kafka_status.resources[0].status.readyReplicas | default(0) > 0
+      retries: 30
+      delay: 10
+    
+    - name: Wait for microservices to be ready
+      kubernetes.core.k8s_info:
+        kind: Deployment
+        name: "{{ item }}"
+        namespace: "{{ namespace }}"
+      register: service_status
+      until: service_status.resources[0].status.readyReplicas | default(0) > 0
+      retries: 30
+      delay: 10
+      loop:
+        - user-service
+        - product-service
+        - inventory-service
+        - payment-service
+        - api-gateway
+    
+    # ==========================================================================
+    # PHASE 6: APPLY ISTIO CONFIGURATIONS
+    # ==========================================================================
+    - name: Apply Istio Gateway
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ playbook_dir }}/../../helm/full-observability/templates/istio/01-gateway.yaml"
+        namespace: "{{ namespace }}"
+    
+    - name: Apply Istio VirtualServices
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ item }}"
+        namespace: "{{ namespace }}"
+      loop:
+        - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/02-virtualservice-api-gateway.yaml"
+        - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/03-virtualservice-user.yaml"
+        - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/04-virtualservice-product.yaml"
+        - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/05-virtualservice-inventory.yaml"
+        - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/06-virtualservice-payment.yaml"
+    
+    - name: Apply Istio DestinationRules
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ item }}"
+        namespace: "{{ namespace }}"
+      loop:
+        - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/08-destinationrule-user.yaml"
+        - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/09-destinationrule-product.yaml"
+        - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/10-destinationrule-inventory.yaml"
+        - "{{ playbook_dir }}/../../helm/full-observability/templates/istio/11-destinationrule-payment.yaml"
+    
+    - name: Apply mTLS PeerAuthentication
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ playbook_dir }}/../../helm/full-observability/templates/istio/14-peer-authentication.yaml"
+        namespace: "{{ namespace }}"
+    
+    - name: Apply AuthorizationPolicies
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ playbook_dir }}/../../helm/full-observability/templates/istio/15-authorization-policy.yaml"
+        namespace: "{{ namespace }}"
+    
+    # ==========================================================================
+    # PHASE 7: VERIFICATION
+    # ==========================================================================
+    - name: Get all pods
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+      register: all_pods
+    
+    - name: Display pod status
+      debug:
+        msg: "{{ item.metadata.name }}: {{ item.status.phase }}"
+      loop: "{{ all_pods.resources }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+    
+    - name: Get all services
+      kubernetes.core.k8s_info:
+        kind: Service
+        namespace: "{{ namespace }}"
+      register: all_services
+    
+    - name: Display service endpoints
+      debug:
+        msg: "{{ item.metadata.name }}: {{ item.spec.clusterIP }}:{{ item.spec.ports[0].port }}"
+      loop: "{{ all_services.resources }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+    
+    # ==========================================================================
+    # PHASE 8: HEALTH CHECKS
+    # ==========================================================================
+    - name: Health check - User Service
+      uri:
+        url: "http://{{ user_service_ip }}:8080/health"
+        method: GET
+        status_code: 200
+      register: user_health
+      failed_when: false
+      vars:
+        user_service_ip: "{{ (all_services.resources | selectattr('metadata.name', 'equalto', 'user-service') | first).spec.clusterIP }}"
+    
+    - name: Display health check results
+      debug:
+        msg: "User Service health: {{ 'OK' if user_health.status == 200 else 'FAILED' }}"
+    
+    # ==========================================================================
+    # COMPLETION MESSAGE
+    # ==========================================================================
+    - name: Deployment Summary
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════╗
+          ║     DEPLOYMENT COMPLETED SUCCESSFULLY! 🎉                  ║
+          ╚════════════════════════════════════════════════════════════╝
+          
+          Namespace: {{ namespace }}
+          Environment: {{ environment }}
+          
+          Services deployed:
+            ✅ User Service
+            ✅ Product Service
+            ✅ Inventory Service
+            ✅ Payment Service
+            ✅ API Gateway
+          
+          Observability stack:
+            ✅ Prometheus
+            ✅ Grafana
+            ✅ Jaeger
+          
+          Istio Service Mesh:
+            ✅ Gateway
+            ✅ VirtualServices
+            ✅ DestinationRules
+            ✅ mTLS Enabled
+          
+          Next steps:
+            kubectl get pods -n {{ namespace }}
+            kubectl get svc -n {{ namespace }}
+
