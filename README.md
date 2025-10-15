@@ -1207,6 +1207,61 @@ sequenceDiagram
     Note over P,I: Eventually Consistent<br/>Payment created immediately<br/>Inventory updated async
 ```
 
+## CI/CD Pipeline
+
+```mermaid
+flowchart LR
+    subgraph "Developer Workflow"
+        DEV[Developer] -->|git push| GIT[GitHub Repository]
+    end
+    
+    subgraph "Continuous Integration"
+        GIT -->|trigger| CI[GitHub Actions CI]
+        
+        CI --> LINT[Code Linting<br/>golangci-lint]
+        CI --> TEST[Unit Tests<br/>Go Test + Coverage]
+        CI --> BUILD[Build Images<br/>Docker Buildx]
+        CI --> SEC[Security Scan<br/>Trivy + CodeQL]
+        CI --> VALIDATE[Validate K8s<br/>Helm Lint]
+        
+        LINT --> PASS{All Pass?}
+        TEST --> PASS
+        BUILD --> PASS
+        SEC --> PASS
+        VALIDATE --> PASS
+    end
+    
+    subgraph "Continuous Deployment"
+        PASS -->|Yes| CD[GitHub Actions CD]
+        PASS -->|No| FAIL[❌ Block Deploy]
+        
+        CD --> PUSH[Push to Registry<br/>Docker Hub/ECR]
+        PUSH --> DEPLOY_DEV[Deploy to Dev<br/>Auto]
+        
+        DEPLOY_DEV --> SMOKE[Smoke Tests]
+        SMOKE -->|Pass| DEPLOY_STAGE[Deploy to Staging<br/>Manual Approval]
+        
+        DEPLOY_STAGE --> CANARY[Canary Deploy<br/>10% traffic]
+        CANARY --> MONITOR[Monitor 5min<br/>Error rate, Latency]
+        
+        MONITOR -->|OK| PROMOTE[Promote to 100%]
+        MONITOR -->|Failed| ROLLBACK[Rollback]
+        
+        PROMOTE --> DEPLOY_PROD[Production<br/>✅ Complete]
+    end
+    
+    subgraph "Notifications"
+        FAIL -.->|Alert| SLACK[Slack/Email]
+        DEPLOY_PROD -.->|Success| SLACK
+        ROLLBACK -.->|Alert| SLACK
+    end
+    
+    style PASS fill:#99ff99
+    style FAIL fill:#ff9999
+    style DEPLOY_PROD fill:#99ff99
+    style ROLLBACK fill:#ff9999
+```
+
 ## Infrastructure as Code & Automation
 
 ```mermaid
@@ -1254,6 +1309,26 @@ graph LR
 ```
 
 ## Deployment Commands
+
+### GitHub Actions (CI/CD)
+```bash
+# CI Pipeline (automatic on push)
+git push origin main
+
+# Manual deployment
+gh workflow run cd.yml -f environment=dev
+
+# Create release
+git tag v1.0.0
+git push origin v1.0.0
+
+# View workflow runs
+gh run list
+gh run view <run-id>
+
+# Download artifacts
+gh run download <run-id>
+```
 
 ### Terraform - AWS Infrastructure
 ```bash
@@ -1538,11 +1613,14 @@ flowchart TD
 - **Async Processing**: Kafka event-driven architecture
 
 ### Deployment & DevOps
+- **CI/CD Pipeline**: GitHub Actions for automated testing and deployment
 - **Infrastructure as Code**: Terraform for AWS resources
 - **Configuration Management**: Ansible automation
 - **Helm Charts**: Kubernetes package management
 - **Canary Deployments**: Gradual rollout with traffic splitting
 - **Blue-Green Deployments**: Instant switch with rollback capability
+- **Automated Testing**: Unit tests, integration tests, security scans
+- **Dependency Management**: Dependabot for automatic updates
 - **GitOps Ready**: Declarative configuration
 
 ### API & Documentation
