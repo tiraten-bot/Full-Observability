@@ -1,0 +1,68 @@
+# ==============================================================================
+# ANSIBLE PLAYBOOK - ROLLBACK
+# ==============================================================================
+# Purpose: Rollback to previous version
+# Usage: ansible-playbook playbooks/rollback.yml -e service=user-service
+# ==============================================================================
+
+---
+- name: Rollback Service to Previous Version
+  hosts: localhost
+  gather_facts: no
+  
+  vars:
+    namespace: observability
+    service_name: "{{ service | default('all') }}"
+  
+  tasks:
+    # ==========================================================================
+    # ROLLBACK SPECIFIC SERVICE
+    # ==========================================================================
+    - name: Rollback deployment
+      command: kubectl rollout undo deployment/{{ service_name }} -n {{ namespace }}
+      when: service_name != 'all'
+      register: rollback_result
+    
+    - name: Wait for rollback to complete
+      command: kubectl rollout status deployment/{{ service_name }} -n {{ namespace }}
+      when: service_name != 'all'
+    
+    # ==========================================================================
+    # ROLLBACK ALL SERVICES
+    # ==========================================================================
+    - name: Get all deployments
+      kubernetes.core.k8s_info:
+        kind: Deployment
+        namespace: "{{ namespace }}"
+      register: all_deployments
+      when: service_name == 'all'
+    
+    - name: Rollback all deployments
+      command: kubectl rollout undo deployment/{{ item.metadata.name }} -n {{ namespace }}
+      loop: "{{ all_deployments.resources }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+      when: service_name == 'all'
+    
+    # ==========================================================================
+    # VERIFICATION
+    # ==========================================================================
+    - name: Verify rollback
+      kubernetes.core.k8s_info:
+        kind: Deployment
+        name: "{{ service_name }}"
+        namespace: "{{ namespace }}"
+      register: deployment_status
+      when: service_name != 'all'
+    
+    - name: Display rollback status
+      debug:
+        msg: |
+          Rollback completed for {{ service_name }}
+          Current revision: {{ deployment_status.resources[0].metadata.annotations['deployment.kubernetes.io/revision'] }}
+      when: service_name != 'all'
+    
+    - name: Rollback summary
+      debug:
+        msg: "Rollback completed successfully"
+
