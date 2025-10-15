@@ -1,0 +1,154 @@
+# ==============================================================================
+# PULL REQUEST AUTOMATION
+# ==============================================================================
+# Purpose: Automate PR checks, labeling, and review
+# ==============================================================================
+
+name: PR Automation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  # ============================================================================
+  # JOB 1: AUTO LABEL
+  # ============================================================================
+  auto-label:
+    name: Auto Label PR
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Label based on files changed
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Label by size
+        uses: codelytv/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/xs'
+          xs_max_size: '10'
+          s_label: 'size/s'
+          s_max_size: '100'
+          m_label: 'size/m'
+          m_max_size: '500'
+          l_label: 'size/l'
+          l_max_size: '1000'
+          xl_label: 'size/xl'
+
+  # ============================================================================
+  # JOB 2: PR VALIDATION
+  # ============================================================================
+  validate:
+    name: Validate PR
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Check PR title format
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|refactor|perf|test|chore|ci)(\(.+\))?: ]]; then
+            echo "❌ PR title must follow conventional commits format"
+            echo "Format: type(scope): description"
+            echo "Types: feat, fix, docs, style, refactor, perf, test, chore, ci"
+            exit 1
+          fi
+      
+      - name: Check branch name
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ ! "$BRANCH" =~ ^(feature|bugfix|hotfix|release)/ ]]; then
+            echo "⚠️ Branch name should follow: feature/, bugfix/, hotfix/, release/"
+          fi
+      
+      - name: Check for large files
+        run: |
+          LARGE_FILES=$(find . -type f -size +1M -not -path "./.git/*" -not -path "./vendor/*")
+          if [ ! -z "$LARGE_FILES" ]; then
+            echo "❌ Large files detected (>1MB):"
+            echo "$LARGE_FILES"
+            exit 1
+          fi
+      
+      - name: Detect secrets in PR
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================================
+  # JOB 3: CODE REVIEW BOT
+  # ============================================================================
+  review-bot:
+    name: Automated Code Review
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run reviewdog
+        uses: reviewdog/action-golangci-lint@v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+      
+      - name: Comment PR with checklist
+        uses: actions/github-script@v7
+        if: github.event.action == 'opened'
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## PR Checklist
+              
+              Please ensure:
+              - [ ] Tests added/updated
+              - [ ] Documentation updated
+              - [ ] No breaking changes (or documented)
+              - [ ] Commits follow conventional commits
+              - [ ] Code reviewed by at least 1 person
+              - [ ] CI passes
+              - [ ] Security scan passes
+              
+              ## Deployment
+              - [ ] Tested locally
+              - [ ] Ready for staging deployment
+              
+              cc: @reviewers`
+            })
+
+  # ============================================================================
+  # JOB 4: AUTO MERGE (Dependabot PRs)
+  # ============================================================================
+  auto-merge:
+    name: Auto Merge Dependabot
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    needs: [validate]
+    permissions:
+      pull-requests: write
+      contents: write
+    
+    steps:
+      - name: Enable auto-merge
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
