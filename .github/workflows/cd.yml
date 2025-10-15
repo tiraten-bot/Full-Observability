@@ -1,0 +1,239 @@
+# ==============================================================================
+# CONTINUOUS DEPLOYMENT (CD) PIPELINE
+# ==============================================================================
+# Purpose: Deploy to Kubernetes on successful CI
+# Triggers: Push to main (after CI passes)
+# ==============================================================================
+
+name: CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  DOCKER_REGISTRY: docker.io
+  K8S_NAMESPACE: observability
+  HELM_RELEASE: full-observability
+
+jobs:
+  # ============================================================================
+  # JOB 1: DEPLOY TO DEVELOPMENT
+  # ============================================================================
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+      url: https://dev.example.com
+    
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'dev'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region us-east-1 \
+            --name full-observability-dev-eks
+      
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.13.0'
+      
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE }} ./helm/full-observability \
+            --namespace ${{ env.K8S_NAMESPACE }} \
+            --create-namespace \
+            --values helm/values-dev.yaml \
+            --set userService.image.tag=${{ github.sha }} \
+            --set productService.image.tag=${{ github.sha }} \
+            --set inventoryService.image.tag=${{ github.sha }} \
+            --set paymentService.image.tag=${{ github.sha }} \
+            --set apiGateway.image.tag=${{ github.sha }} \
+            --wait \
+            --timeout 15m
+      
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/user-service -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/product-service -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/inventory-service -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/payment-service -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/api-gateway -n ${{ env.K8S_NAMESPACE }}
+      
+      - name: Run smoke tests
+        run: |
+          kubectl run test-pod --rm -i --restart=Never \
+            --image=curlimages/curl:latest \
+            --namespace=${{ env.K8S_NAMESPACE }} \
+            -- curl -f http://api-gateway:8000/health
+      
+      - name: Get deployment info
+        run: |
+          echo "Deployed services:"
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+          kubectl get svc -n ${{ env.K8S_NAMESPACE }}
+
+  # ============================================================================
+  # JOB 2: DEPLOY TO STAGING (requires approval)
+  # ============================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: deploy-dev
+    environment:
+      name: staging
+      url: https://staging.example.com
+    
+    if: github.event.inputs.environment == 'staging' || (github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region us-east-1 \
+            --name full-observability-staging-eks
+      
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+      
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE }} ./helm/full-observability \
+            --namespace ${{ env.K8S_NAMESPACE }} \
+            --create-namespace \
+            --values helm/values-staging.yaml \
+            --set userService.image.tag=${{ github.sha }} \
+            --set productService.image.tag=${{ github.sha }} \
+            --set inventoryService.image.tag=${{ github.sha }} \
+            --set paymentService.image.tag=${{ github.sha }} \
+            --set apiGateway.image.tag=${{ github.sha }} \
+            --wait \
+            --timeout 15m
+
+  # ============================================================================
+  # JOB 3: DEPLOY TO PRODUCTION (requires manual approval)
+  # ============================================================================
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment:
+      name: production
+      url: https://api.example.com
+    
+    if: github.event.inputs.environment == 'prod'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_PROD_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_PROD_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region us-east-1 \
+            --name full-observability-prod-eks
+      
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+      
+      - name: Backup current deployment
+        run: |
+          helm get values ${{ env.HELM_RELEASE }} -n ${{ env.K8S_NAMESPACE }} > /tmp/backup-values.yaml
+          kubectl get all -n ${{ env.K8S_NAMESPACE }} -o yaml > /tmp/backup-resources.yaml
+      
+      - name: Deploy with Helm (Canary - 10%)
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE }} ./helm/full-observability \
+            --namespace ${{ env.K8S_NAMESPACE }} \
+            --values helm/values-prod.yaml \
+            --set userService.image.tag=${{ github.sha }} \
+            --set userService.canary.enabled=true \
+            --set userService.canary.weight=10 \
+            --wait \
+            --timeout 15m
+      
+      - name: Monitor canary (5 minutes)
+        run: |
+          echo "Monitoring canary deployment for 5 minutes..."
+          sleep 300
+      
+      - name: Check error rate
+        run: |
+          ERROR_RATE=$(kubectl exec -n ${{ env.K8S_NAMESPACE }} deployment/prometheus -- \
+            wget -qO- 'http://localhost:9090/api/v1/query?query=rate(istio_requests_total{destination_version="canary",response_code=~"5.."}[5m])' \
+            | jq -r '.data.result[0].value[1]' || echo "0")
+          
+          if (( $(echo "$ERROR_RATE > 0.05" | bc -l) )); then
+            echo "Error rate too high: $ERROR_RATE"
+            echo "Rolling back..."
+            helm rollback ${{ env.HELM_RELEASE }} -n ${{ env.K8S_NAMESPACE }}
+            exit 1
+          fi
+          
+          echo "Error rate OK: $ERROR_RATE"
+      
+      - name: Promote canary to 100%
+        run: |
+          helm upgrade ${{ env.HELM_RELEASE }} ./helm/full-observability \
+            --namespace ${{ env.K8S_NAMESPACE }} \
+            --reuse-values \
+            --set userService.canary.weight=100 \
+            --wait
+      
+      - name: Verify production deployment
+        run: |
+          kubectl rollout status deployment/user-service -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/product-service -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/payment-service -n ${{ env.K8S_NAMESPACE }}
+      
+      - name: Archive backup
+        uses: actions/upload-artifact@v3
+        with:
+          name: prod-backup-${{ github.sha }}
+          path: /tmp/backup-*.yaml
+          retention-days: 30
+
