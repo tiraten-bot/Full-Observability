@@ -217,16 +217,29 @@ jobs:
         run: |
           helm lint helm/full-observability
           helm lint helm/full-observability --values helm/values-dev.yaml
+          helm lint helm/full-observability --values helm/values-staging.yaml
           helm lint helm/full-observability --values helm/values-prod.yaml
       
       - name: Template and validate
         run: |
+          # Create manifests with proper error handling
           helm template full-observability helm/full-observability \
             --values helm/values-dev.yaml \
             --namespace observability \
-            > /tmp/manifests.yaml
+            --debug \
+            > /tmp/manifests.yaml 2>/tmp/helm-errors.log || {
+              echo "❌ Helm template failed:"
+              cat /tmp/helm-errors.log
+              exit 1
+            }
           
-          kubectl --dry-run=client apply -f /tmp/manifests.yaml
+          # Validate manifests
+          kubectl --dry-run=client apply -f /tmp/manifests.yaml || {
+            echo "❌ Kubernetes validation failed"
+            exit 1
+          }
+          
+          echo "✅ All manifests validated successfully"
 
   # ============================================================================
   # JOB 6: NOTIFY

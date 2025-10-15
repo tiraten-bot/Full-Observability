@@ -16,11 +16,11 @@ metadata:
     
     # SSL/TLS Configuration
     {{- if .Values.ingress.tls }}
-    cert-manager.io/cluster-issuer: {{ .Values.ingress.annotations."cert-manager.io/cluster-issuer" | default "letsencrypt-prod" }}
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
     {{- end }}
     
     # NGINX Specific Annotations
-    nginx.ingress.kubernetes.io/ssl-redirect: {{ .Values.ingress.annotations."nginx.ingress.kubernetes.io/ssl-redirect" | default "true" | quote }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
     nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"

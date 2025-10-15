@@ -4,8 +4,10 @@ metadata:
   name: postgres-init-scripts
   namespace: {{ .Values.global.namespace }}
 data:
-  01-create-databases.sql: |
-{{- .Values.postgresql.initdb.scripts | nindent 4 | nindent 4 }}
+{{- range $key, $value := .Values.postgresql.initdb.scripts }}
+  {{ $key }}: |
+{{ $value | nindent 4 }}
+{{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap
