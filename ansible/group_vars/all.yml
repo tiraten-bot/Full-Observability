@@ -1,0 +1,159 @@
+# ==============================================================================
+# ANSIBLE GROUP VARIABLES - ALL HOSTS
+# ==============================================================================
+# Purpose: Variables that apply to all hosts
+# ==============================================================================
+
+# ==============================================================================
+# Project Configuration
+# ==============================================================================
+project_name: full-observability
+environment: "{{ lookup('env', 'ENVIRONMENT') | default('dev', true) }}"
+
+# ==============================================================================
+# Kubernetes Configuration
+# ==============================================================================
+k8s_namespace: observability
+k8s_version: "1.28"
+
+# Helm
+helm_release_name: full-observability
+helm_chart_path: "{{ playbook_dir }}/../helm/full-observability"
+
+# ==============================================================================
+# Docker Registry
+# ==============================================================================
+docker_registry: docker.io
+docker_registry_username: "{{ lookup('env', 'DOCKER_USERNAME') | default('your-username', true) }}"
+
+# Image tags
+image_tag: "{{ lookup('env', 'IMAGE_TAG') | default('latest', true) }}"
+
+# ==============================================================================
+# Service Configuration
+# ==============================================================================
+services:
+  user_service:
+    name: user-service
+    http_port: 8080
+    grpc_port: 9090
+    replicas: 3
+  
+  product_service:
+    name: product-service
+    http_port: 8081
+    grpc_port: 9091
+    replicas: 3
+  
+  inventory_service:
+    name: inventory-service
+    http_port: 8082
+    grpc_port: 9092
+    replicas: 2
+  
+  payment_service:
+    name: payment-service
+    http_port: 8083
+    replicas: 2
+  
+  api_gateway:
+    name: api-gateway
+    port: 8000
+    replicas: 2
+
+# ==============================================================================
+# Database Configuration
+# ==============================================================================
+postgres_host: postgres
+postgres_port: 5432
+postgres_user: postgres
+postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') | default('postgres', true) }}"
+
+databases:
+  - userdb
+  - productdb
+  - inventorydb
+  - paymentdb
+
+# ==============================================================================
+# Redis Configuration
+# ==============================================================================
+redis_host: redis
+redis_port: 6379
+redis_password: ""
+
+# ==============================================================================
+# Kafka Configuration
+# ==============================================================================
+kafka_brokers: "kafka:29092"
+kafka_topics:
+  - product-purchased
+  - inventory-updated
+  - payment-events
+
+# ==============================================================================
+# Istio Configuration
+# ==============================================================================
+istio_version: "1.20.2"
+istio_profile: default
+istio_mtls_mode: STRICT
+
+# ==============================================================================
+# Monitoring Configuration
+# ==============================================================================
+prometheus_retention: 15d
+prometheus_scrape_interval: 15s
+
+grafana_admin_user: admin
+grafana_admin_password: "{{ lookup('env', 'GRAFANA_PASSWORD') | default('admin', true) }}"
+
+# ==============================================================================
+# Security Configuration
+# ==============================================================================
+jwt_secret_key: "{{ lookup('env', 'JWT_SECRET') | default('my-super-secret-jwt-key-change-this-in-production-2024', true) }}"
+jwt_expiration: 24h
+
+# ==============================================================================
+# Resource Limits
+# ==============================================================================
+resource_limits:
+  user_service:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  product_service:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  payment_service:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ==============================================================================
+# Health Check Configuration
+# ==============================================================================
+health_check:
+  liveness_probe:
+    initial_delay_seconds: 30
+    period_seconds: 10
+    timeout_seconds: 5
+    failure_threshold: 3
+  
+  readiness_probe:
+    initial_delay_seconds: 5
+    period_seconds: 5
+    timeout_seconds: 3
+    failure_threshold: 3
+
