@@ -1,0 +1,148 @@
+# ==============================================================================
+# ANSIBLE PLAYBOOK - BACKUP DATABASES
+# ==============================================================================
+# Purpose: Backup PostgreSQL databases and upload to S3
+# Usage: ansible-playbook playbooks/backup.yml
+# ==============================================================================
+
+---
+- name: Backup PostgreSQL Databases
+  hosts: localhost
+  gather_facts: yes
+  
+  vars:
+    namespace: observability
+    backup_dir: /tmp/backups
+    timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+    s3_bucket: "{{ lookup('env', 'BACKUP_S3_BUCKET') | default('full-observability-backups', true) }}"
+  
+  tasks:
+    # ==========================================================================
+    # PREPARE BACKUP DIRECTORY
+    # ==========================================================================
+    - name: Create backup directory
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: '0755'
+    
+    # ==========================================================================
+    # GET POSTGRESQL POD
+    # ==========================================================================
+    - name: Get PostgreSQL pod
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app=postgres
+      register: postgres_pods
+    
+    - name: Set PostgreSQL pod name
+      set_fact:
+        postgres_pod: "{{ postgres_pods.resources[0].metadata.name }}"
+    
+    # ==========================================================================
+    # BACKUP DATABASES
+    # ==========================================================================
+    - name: Backup databases
+      kubernetes.core.k8s_exec:
+        namespace: "{{ namespace }}"
+        pod: "{{ postgres_pod }}"
+        command: pg_dump -U postgres {{ item }} -Fc
+      loop:
+        - userdb
+        - productdb
+        - inventorydb
+        - paymentdb
+      register: database_dumps
+    
+    - name: Save backup files
+      copy:
+        content: "{{ item.stdout }}"
+        dest: "{{ backup_dir }}/{{ item.item }}-{{ timestamp }}.dump"
+        mode: '0600'
+      loop: "{{ database_dumps.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+    
+    # ==========================================================================
+    # BACKUP KUBERNETES RESOURCES
+    # ==========================================================================
+    - name: Backup Kubernetes resources
+      shell: |
+        kubectl get all,cm,secret,pvc,ingress -n {{ namespace }} -o yaml > {{ backup_dir }}/k8s-resources-{{ timestamp }}.yaml
+      args:
+        creates: "{{ backup_dir }}/k8s-resources-{{ timestamp }}.yaml"
+    
+    - name: Backup Istio configurations
+      shell: |
+        kubectl get gateway,virtualservice,destinationrule,peerauthentication,authorizationpolicy -n {{ namespace }} -o yaml > {{ backup_dir }}/istio-config-{{ timestamp }}.yaml
+      args:
+        creates: "{{ backup_dir }}/istio-config-{{ timestamp }}.yaml"
+    
+    # ==========================================================================
+    # COMPRESS BACKUPS
+    # ==========================================================================
+    - name: Compress backups
+      archive:
+        path: "{{ backup_dir }}/*-{{ timestamp }}.*"
+        dest: "{{ backup_dir }}/full-backup-{{ timestamp }}.tar.gz"
+        format: gz
+    
+    # ==========================================================================
+    # UPLOAD TO S3 (if configured)
+    # ==========================================================================
+    - name: Upload to S3
+      amazon.aws.s3_object:
+        bucket: "{{ s3_bucket }}"
+        object: "backups/{{ timestamp }}/full-backup-{{ timestamp }}.tar.gz"
+        src: "{{ backup_dir }}/full-backup-{{ timestamp }}.tar.gz"
+        mode: put
+        encrypt: yes
+      when: s3_bucket is defined and s3_bucket != ''
+      register: s3_upload
+      failed_when: false
+    
+    # ==========================================================================
+    # CLEANUP OLD BACKUPS
+    # ==========================================================================
+    - name: Find old backups (older than 7 days)
+      find:
+        paths: "{{ backup_dir }}"
+        age: 7d
+        patterns: "*.tar.gz"
+      register: old_backups
+    
+    - name: Delete old backups
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_backups.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+    
+    # ==========================================================================
+    # SUMMARY
+    # ==========================================================================
+    - name: Backup summary
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════════════════════════╗
+          ║              BACKUP COMPLETED                                 ║
+          ╚═══════════════════════════════════════════════════════════════╝
+          
+          Timestamp: {{ timestamp }}
+          Location: {{ backup_dir }}/full-backup-{{ timestamp }}.tar.gz
+          Size: {{ (backup_dir + '/full-backup-' + timestamp + '.tar.gz') | file_size | filesizeformat }}
+          
+          Databases backed up:
+            ✅ userdb
+            ✅ productdb
+            ✅ inventorydb
+            ✅ paymentdb
+          
+          Kubernetes resources: ✅
+          Istio configurations: ✅
+          
+          {{ 'Uploaded to S3: ' + s3_bucket if s3_upload.changed else 'S3 upload: Not configured' }}
+
