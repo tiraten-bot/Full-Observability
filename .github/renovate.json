@@ -1,0 +1,132 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    ":dependencyDashboard",
+    ":semanticCommitTypeAll(chore)",
+    ":semanticCommitScope(deps)"
+  ],
+  "timezone": "Europe/Istanbul",
+  "schedule": ["before 9am on monday"],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "🔄 Dependency Dashboard",
+  "dependencyDashboardHeader": "This issue contains a list of Renovate updates and their statuses.",
+  
+  "packageRules": [
+    {
+      "description": "Group all non-major updates together",
+      "updateTypes": ["minor", "patch"],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Group major updates by ecosystem",
+      "updateTypes": ["major"],
+      "groupName": "major updates",
+      "groupSlug": "major-updates",
+      "labels": ["dependencies", "major-update"],
+      "reviewers": ["devops-team"],
+      "assignees": ["tech-lead"]
+    },
+    {
+      "description": "Go dependencies",
+      "matchManagers": ["gomod"],
+      "groupName": "Go dependencies",
+      "groupSlug": "go-deps",
+      "labels": ["dependencies", "go"],
+      "commitMessagePrefix": "chore(deps): go:",
+      "schedule": ["before 9am on monday"]
+    },
+    {
+      "description": "Docker dependencies",
+      "matchManagers": ["dockerfile"],
+      "groupName": "Docker dependencies",
+      "groupSlug": "docker-deps",
+      "labels": ["dependencies", "docker"],
+      "commitMessagePrefix": "chore(deps): docker:",
+      "schedule": ["before 9am on tuesday"]
+    },
+    {
+      "description": "GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions",
+      "labels": ["dependencies", "github-actions"],
+      "commitMessagePrefix": "chore(deps): actions:",
+      "schedule": ["before 9am on wednesday"]
+    },
+    {
+      "description": "Terraform dependencies",
+      "matchManagers": ["terraform"],
+      "groupName": "Terraform dependencies",
+      "groupSlug": "terraform-deps",
+      "labels": ["dependencies", "terraform"],
+      "commitMessagePrefix": "chore(deps): terraform:",
+      "schedule": ["before 9am on thursday"]
+    },
+    {
+      "description": "Ansible dependencies",
+      "matchManagers": ["ansible"],
+      "groupName": "Ansible dependencies",
+      "groupSlug": "ansible-deps",
+      "labels": ["dependencies", "ansible"],
+      "commitMessagePrefix": "chore(deps): ansible:",
+      "schedule": ["before 9am on friday"]
+    },
+    {
+      "description": "Helm dependencies",
+      "matchManagers": ["helm-values"],
+      "groupName": "Helm dependencies",
+      "groupSlug": "helm-deps",
+      "labels": ["dependencies", "helm"],
+      "commitMessagePrefix": "chore(deps): helm:",
+      "schedule": ["before 9am on friday"]
+    }
+  ],
+  
+  "ignoreDeps": [
+    "golang.org/x/crypto@0.44.0"  // Specific version to ignore if needed
+  ],
+  
+  "ignorePaths": [
+    "**/vendor/**",
+    "**/node_modules/**"
+  ],
+  
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security", "dependencies"],
+    "assignees": ["security-team"],
+    "reviewers": ["security-team"],
+    "commitMessagePrefix": "fix(security):",
+    "schedule": ["at any time"]
+  },
+  
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 2,
+  
+  "commitMessagePrefix": "chore(deps):",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "to {{newVersion}}",
+  
+  "labels": ["dependencies"],
+  "assignees": [],
+  "reviewers": ["devops-team"],
+  
+  "automerge": false,
+  "automergeType": "pr",
+  "platformAutomerge": false,
+  
+  "rangeStrategy": "replace",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 9am on sunday"]
+  },
+  
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps"
+}
