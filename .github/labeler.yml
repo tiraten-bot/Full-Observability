@@ -1,0 +1,75 @@
+# ==============================================================================
+# PR LABELER CONFIGURATION
+# ==============================================================================
+# Purpose: Automatically label PRs based on changed files
+# ==============================================================================
+
+# Services
+'service/user':
+  - 'cmd/user/**/*'
+  - 'internal/user/**/*'
+
+'service/product':
+  - 'cmd/product/**/*'
+  - 'internal/product/**/*'
+
+'service/inventory':
+  - 'cmd/inventory/**/*'
+  - 'internal/inventory/**/*'
+
+'service/payment':
+  - 'cmd/payment/**/*'
+  - 'internal/payment/**/*'
+
+'service/gateway':
+  - 'api-gateway/**/*'
+
+# Infrastructure
+'infrastructure/docker':
+  - 'dockerfiles/**/*'
+  - 'docker-compose.yml'
+
+'infrastructure/kubernetes':
+  - 'helm/**/*'
+
+'infrastructure/terraform':
+  - 'terraform/**/*'
+
+'infrastructure/ansible':
+  - 'ansible/**/*'
+
+# Components
+'component/istio':
+  - 'helm/**/istio/**/*'
+
+'component/observability':
+  - 'prometheus/**/*'
+  - 'grafana/**/*'
+
+# Code areas
+'area/api':
+  - 'api/**/*'
+  - '**/proto/**/*'
+
+'area/database':
+  - '**/repository/**/*'
+  - 'pkg/database/**/*'
+
+'area/authentication':
+  - 'pkg/auth/**/*'
+  - '**/middleware.go'
+
+# CI/CD
+'ci/cd':
+  - '.github/workflows/**/*'
+
+# Documentation
+'documentation':
+  - '**.md'
+  - 'docs/**/*'
+
+# Dependencies
+'dependencies':
+  - 'go.mod'
+  - 'go.sum'
+
