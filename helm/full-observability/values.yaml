@@ -56,7 +56,7 @@ postgresql:
   enabled: true
   image:
     repository: postgres
-    tag: "15-alpine"
+    tag: "18-alpine"
   
   persistence:
     enabled: true
@@ -95,7 +95,7 @@ redis:
   enabled: true
   image:
     repository: redis
-    tag: "7-alpine"
+    tag: "8-alpine"
   
   service:
     type: ClusterIP
