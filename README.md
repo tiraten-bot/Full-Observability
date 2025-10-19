@@ -110,16 +110,16 @@ graph TB
 ```mermaid
 graph LR
     subgraph "Terraform Modules"
-        VPC[VPC Module<br/>Network Infrastructure]
-        EKS[EKS Module<br/>Kubernetes Cluster]
-        RDS[RDS Module<br/>PostgreSQL Database]
-        REDIS[ElastiCache Module<br/>Redis Cache]
-        KAFKA[MSK Module<br/>Kafka Cluster]
-        SG[Security Groups<br/>Firewall Rules]
-        IAM[IAM Module<br/>Roles & Policies]
-        ALB_M[ALB Module<br/>Load Balancer]
-        R53[Route53 Module<br/>DNS]
-        ACM_M[ACM Module<br/>SSL Certificates]
+        VPC[VPC Module<br/>🌐 Network Infrastructure]
+        EKS[EKS Module<br/>🚀 Kubernetes Cluster]
+        RDS[RDS Module<br/>🗄️ PostgreSQL Database]
+        REDIS[ElastiCache Module<br/>⚡ Redis Cache]
+        KAFKA[MSK Module<br/>🔥 Kafka Cluster]
+        SG[Security Groups<br/>🛡️ Firewall Rules]
+        IAM[IAM Module<br/>🔐 Roles & Policies]
+        ALB_M[ALB Module<br/>🌉 Load Balancer]
+        R53[Route53 Module<br/>🧭 DNS]
+        ACM_M[ACM Module<br/>📜 SSL Certificates]
     end
     
     VPC --> EKS
@@ -137,10 +137,17 @@ graph LR
     ALB_M --> VPC
     R53 --> ALB_M
     ACM_M --> ALB_M
-    
-    style VPC fill:#e1f0ff
-    style EKS fill:#ffe1e1
-    style RDS fill:#e1ffe1
+
+    style VPC fill:#8e44ad,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style EKS fill:#e67e22,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style RDS fill:#27ae60,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style REDIS fill:#c0392b,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style KAFKA fill:#f1c40f,stroke:#000000,color:#000000,font-weight:bold
+    style SG fill:#1abc9c,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style IAM fill:#3498db,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style ALB_M fill:#9b59b6,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style R53 fill:#e84393,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style ACM_M fill:#2ecc71,stroke:#ffffff,color:#ffffff,font-weight:bold
 ```
 
 ## Architecture Overview
