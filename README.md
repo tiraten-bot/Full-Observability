@@ -95,11 +95,14 @@ graph TB
     MSK -.->|Encrypted| KMS
     MSK -.->|Logs| S3
     
-    style RDS fill:#ff9999
-    style REDIS fill:#99ff99
-    style MSK fill:#9999ff
-    style NG1 fill:#ffcc99
-    style NG2 fill:#cc99ff
+    classDef darkNode fill:#2b003d,stroke:#ffffff,color:#ffffff,font-weight:bold;
+    class PUB1,PRIV1,DB1,PUB2,PRIV2,DB2,PUB3,PRIV3,DB3,IGW,ALB,CP,NG1,NG2,R53,ACM,ECR,CW,SNS,KMS,S3,Internet darkNode;
+    style RDS fill:#ff9999,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style REDIS fill:#99ff99,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style MSK fill:#9999ff,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style NG1 fill:#3a0050,stroke:#ffffff,color:#ffffff,font-weight:bold
+    style NG2 fill:#3a0050,stroke:#ffffff,color:#ffffff,font-weight:bold
+
 ```
 
 ## Terraform Infrastructure as Code
