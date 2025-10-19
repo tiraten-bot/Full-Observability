@@ -1635,7 +1635,7 @@ flowchart TD
 <table>
   <tbody>
     <tr>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ozturkeniss"><img src="https://avatars.githubusercontent.com/u/ozturkeniss?v=4?s=100" width="100px;" alt="ozturkeniss"/><br /><sub><b>ozturkeniss</b></sub></a><br /><a href="#maintenance-ozturkeniss" title="Maintenance">🔧</a> <a href="#projectManagement-ozturkeniss" title="Project Management">📋</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ozturkeniss"><img src="https://avatars.githubusercontent.com/u/136935737?v=4?s=100" width="100px;" alt="ozturkeniss"/><br /><sub><b>ozturkeniss</b></sub></a><br /><a href="#maintenance-ozturkeniss" title="Maintenance">🔧</a> <a href="#projectManagement-ozturkeniss" title="Project Management">📋</a></td>
     </tr>
   </tbody>
 </table>
