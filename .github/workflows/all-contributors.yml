@@ -1,0 +1,86 @@
+# ==============================================================================
+# ALL CONTRIBUTORS BOT WORKFLOW
+# ==============================================================================
+# Purpose: Automatically update contributors list when PRs are merged
+# Triggers: PR merged, issue closed, manual trigger
+# ==============================================================================
+
+name: All Contributors Bot
+
+on:
+  pull_request:
+    types: [opened, closed, reopened]
+  issues:
+    types: [opened, closed, reopened]
+  workflow_dispatch:
+    inputs:
+      contributor:
+        description: 'Contributor username'
+        required: true
+        type: string
+      contribution:
+        description: 'Contribution type (bug, code, doc, design, etc.)'
+        required: true
+        type: string
+
+jobs:
+  all-contributors:
+    name: Update Contributors
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install All Contributors CLI
+        run: npm install -g all-contributors-cli
+      
+      - name: Update contributors (PR merged)
+        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+        run: |
+          # Add contributor from PR author
+          all-contributors add ${{ github.event.pull_request.user.login }} code
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "docs: add ${{ github.event.pull_request.user.login }} as contributor" || exit 0
+          git push
+      
+      - name: Update contributors (Issue closed)
+        if: github.event_name == 'issues' && github.event.action == 'closed'
+        run: |
+          # Add contributor from issue author
+          all-contributors add ${{ github.event.issue.user.login }} bug
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "docs: add ${{ github.event.issue.user.login }} as contributor" || exit 0
+          git push
+      
+      - name: Update contributors (Manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          # Add contributor manually
+          all-contributors add ${{ github.event.inputs.contributor }} ${{ github.event.inputs.contribution }}
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "docs: add ${{ github.event.inputs.contributor }} as contributor" || exit 0
+          git push
+      
+      - name: Generate contributors list
+        run: |
+          all-contributors generate
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "docs: update contributors list" || exit 0
+          git push

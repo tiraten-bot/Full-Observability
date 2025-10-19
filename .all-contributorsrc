@@ -1,0 +1,131 @@
+{
+  "projectName": "full-observability",
+  "projectOwner": "ozturkeniss",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": true,
+  "commitConvention": "conventional",
+  "contributorsPerLine": 7,
+  "contributorsSortAlphabetically": true,
+  "badgeTemplate": "<a href=\"#contributors-\" alt=\"All Contributors\"><img src=\"https://img.shields.io/badge/all_contributors-<%= contributors.length %>-orange.svg\" /></a>",
+  "contributorTemplate": "<a href=\"<%= contributor.profile %>\" alt=\"<%= contributor.name %>\"><img src=\"<%= contributor.avatar %>\" width=\"<%= options.imageSize %>px;\" alt=\"<%= contributor.name %>\"/><br /><sub><b><%= contributor.name %></b></sub></a><br /><%= contributor.contributions.map(contribution => `<a href=\"#<%= contribution.toLowerCase().replace(/\\s+/g, '-') %>-<%= contributor.name.toLowerCase().replace(/\\s+/g, '-') %>\" title=\"<%= contribution %>\">${contributionEmoji(contribution)}</a>`).join(' ')%>",
+  "types": {
+    "bug": {
+      "symbol": "🐛",
+      "description": "Bug reports",
+      "link": "[🐛](https://github.com/ozturkeniss/Full-Observability/issues?q=is%3Aissue+label%3Abug)"
+    },
+    "code": {
+      "symbol": "💻",
+      "description": "Code",
+      "link": "[💻](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "doc": {
+      "symbol": "📝",
+      "description": "Documentation",
+      "link": "[📝](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "design": {
+      "symbol": "🎨",
+      "description": "Design",
+      "link": "[🎨](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "example": {
+      "symbol": "💡",
+      "description": "Examples",
+      "link": "[💡](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "ideas": {
+      "symbol": "🤔",
+      "description": "Ideas, Planning, & Feedback",
+      "link": "[🤔](https://github.com/ozturkeniss/Full-Observability/issues?q=is%3Aissue+author%3A<%= contributor.login %>)"
+    },
+    "infra": {
+      "symbol": "🚇",
+      "description": "Infrastructure (Hosting, Build-Tools, etc)",
+      "link": "[🚇](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "maintenance": {
+      "symbol": "🔧",
+      "description": "Maintenance",
+      "link": "[🔧](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "platform": {
+      "symbol": "📦",
+      "description": "Packaging/porting to new platform",
+      "link": "[📦](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "plugin": {
+      "symbol": "🔌",
+      "description": "Plugin/utility libraries",
+      "link": "[🔌](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "projectManagement": {
+      "symbol": "📋",
+      "description": "Project Management",
+      "link": "[📋](https://github.com/ozturkeniss/Full-Observability/issues?q=is%3Aissue+author%3A<%= contributor.login %>)"
+    },
+    "question": {
+      "symbol": "💬",
+      "description": "Answering Questions",
+      "link": "[💬](https://github.com/ozturkeniss/Full-Observability/issues?q=is%3Aissue+author%3A<%= contributor.login %>)"
+    },
+    "review": {
+      "symbol": "👀",
+      "description": "Reviewed Pull Requests",
+      "link": "[👀](https://github.com/ozturkeniss/Full-Observability/pulls?q=is%3Apr+reviewed-by%3A<%= contributor.login %>)"
+    },
+    "security": {
+      "symbol": "🛡️",
+      "description": "Security",
+      "link": "[🛡️](https://github.com/ozturkeniss/Full-Observability/issues?q=is%3Aissue+label%3Asecurity+author%3A<%= contributor.login %>)"
+    },
+    "talk": {
+      "symbol": "📢",
+      "description": "Talks",
+      "link": "[📢](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "test": {
+      "symbol": "⚠️",
+      "description": "Tests",
+      "link": "[⚠️](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "translation": {
+      "symbol": "🌍",
+      "description": "Translation",
+      "link": "[🌍](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "tool": {
+      "symbol": "🔧",
+      "description": "Tools",
+      "link": "[🔧](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "tutorial": {
+      "symbol": "✅",
+      "description": "Tutorials",
+      "link": "[✅](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    },
+    "video": {
+      "symbol": "📹",
+      "description": "Videos",
+      "link": "[📹](https://github.com/ozturkeniss/Full-Observability/commits?author=<%= contributor.login %>)"
+    }
+  },
+  "skipCi": true,
+  "contributors": [
+    {
+      "login": "ozturkeniss",
+      "name": "ozturkeniss",
+      "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
+      "profile": "https://github.com/ozturkeniss",
+      "contributions": [
+        "maintenance",
+        "projectManagement"
+      ]
+    }
+  ]
+}

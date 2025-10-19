@@ -1628,3 +1628,21 @@ flowchart TD
 - **gRPC**: High-performance inter-service communication
 - **RESTful APIs**: Standard HTTP/JSON APIs
 # Trigger Dependabot
+
+## 🤝 Contributors
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ozturkeniss"><img src="https://avatars.githubusercontent.com/u/12345678?v=4?s=100" width="100px;" alt="ozturkeniss"/><br /><sub><b>ozturkeniss</b></sub></a><br /><a href="#maintenance-ozturkeniss" title="Maintenance">🔧</a> <a href="#projectManagement-ozturkeniss" title="Project Management">📋</a></td>
+    </tr>
+  </tbody>
+</table>
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
