@@ -126,6 +126,16 @@
         "maintenance",
         "projectManagement"
       ]
+    },
+    {
+      "login": "explorer-svg",
+      "name": "Explor Rer",
+      "avatar_url": "https://avatars.githubusercontent.com/u/explorer-svg?v=4",
+      "profile": "https://github.com/explorer-svg",
+      "contributions": [
+        "code",
+        "ideas"
+      ]
     }
   ]
 }

@@ -1646,6 +1646,7 @@ flowchart TD
   <tbody>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/ozturkeniss"><img src="https://avatars.githubusercontent.com/u/136935737?v=4?s=100" width="100px;" alt="ozturkeniss"/><br /><sub><b>ozturkeniss</b></sub></a><br /><a href="#maintenance-ozturkeniss" title="Maintenance">🔧</a> <a href="#projectManagement-ozturkeniss" title="Project Management">📋</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/explorer-svg"><img src="https://avatars.githubusercontent.com/u/explorer-svg?v=4?s=100" width="100px;" alt="Explor Rer"/><br /><sub><b>Explor Rer</b></sub></a><br /><a href="#code-explorer-svg" title="Code">💻</a> <a href="#ideas-explorer-svg" title="Ideas, Planning, & Feedback">🤔</a></td>
     </tr>
   </tbody>
 </table>
