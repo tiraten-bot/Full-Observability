@@ -6,7 +6,7 @@ toolchain go1.25.4
 
 require (
 	github.com/IBM/sarama v1.46.3
-	github.com/gofiber/fiber/v2 v2.52.9
+	github.com/gofiber/fiber/v2 v2.52.10
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.7.0
