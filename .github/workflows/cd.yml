@@ -231,7 +231,7 @@ jobs:
           kubectl rollout status deployment/payment-service -n ${{ env.K8S_NAMESPACE }}
       
       - name: Archive backup
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: prod-backup-${{ github.sha }}
           path: /tmp/backup-*.yaml

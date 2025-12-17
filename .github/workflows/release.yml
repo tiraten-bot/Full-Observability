@@ -156,7 +156,7 @@ jobs:
           helm package helm/full-observability
       
       - name: Upload Helm chart
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: helm-chart
           path: full-observability-*.tgz
