@@ -6,12 +6,12 @@ toolchain go1.25.6
 
 require (
 	github.com/IBM/sarama v1.46.3
-	github.com/gofiber/fiber/v2 v2.52.10
-	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/gofiber/fiber/v2 v2.52.11
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.7.0
 	github.com/gorilla/mux v1.8.1
-	github.com/lib/pq v1.10.9
+	github.com/lib/pq v1.11.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/rs/cors v1.11.1
