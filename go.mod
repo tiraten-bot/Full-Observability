@@ -15,7 +15,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/rs/cors v1.11.1
-	github.com/rs/zerolog v1.35.0
+	github.com/rs/zerolog v1.35.1
 	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/swaggo/swag v1.16.6
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0
