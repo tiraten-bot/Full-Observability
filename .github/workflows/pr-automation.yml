@@ -24,7 +24,7 @@ jobs:
     
     steps:
       - name: Label based on files changed
-        uses: actions/labeler@v6
+        uses: actions/labeler@v7
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       
@@ -51,7 +51,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       
@@ -82,7 +82,7 @@ jobs:
           fi
       
       - name: Detect secrets in PR
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -97,7 +97,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: Run reviewdog
         uses: reviewdog/action-golangci-lint@v2
@@ -107,7 +107,7 @@ jobs:
           level: warning
       
       - name: Comment PR with checklist
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         if: github.event.action == 'opened'
         with:
           script: |
