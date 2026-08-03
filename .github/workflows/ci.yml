@@ -211,7 +211,7 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v5
         with:
-          version: 'v3.13.0'
+          version: 'v3.21.3'
       
       - name: Lint Helm chart
         run: |
